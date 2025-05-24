@@ -1,0 +1,65 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<h3>Operator Page</h3>
+<form method="POST">
+    <input name="bot_id" placeholder="Enter Bot ID" required>
+    <button type="submit" class="btn btn-success">Mark Complete</button>
+</form>
+
+<!-- Bot Progress Overview -->
+<div class="mt-4">
+    <table class="table table-bordered">
+        <thead class="table-secondary">
+            <tr>
+                <th>Bot ID</th>
+                <th>Status</th>
+                <th>Quantity</th>
+                <th>Produced</th>
+                <th>Machine</th>
+                <th>Tool</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bot in bots if bot.status != 'Completed' %}
+            <tr>
+                <td>{{ bot.bot_id }}</td>
+                <td>{{ bot.status }}</td>
+                <td>{{ bot.quantity }}</td>
+                <td>{{ bot.produced }}</td>
+                <td>{{ bot.machine }}</td>
+                <td>{{ bot.tool }}</td>
+            </tr>
+            <!-- Bot Projects Overview -->
+<div class="mt-4">
+    <h4>Bot Projects Status</h4>
+    <table class="table table-bordered">
+        <thead class="table-secondary">
+            <tr>
+                <th>Project Name</th>
+                <th>Components</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for project in bot_projects %}
+            <tr>
+                <td>{{ project.name }}</td>
+                <td>
+                    <ul>
+                        {% for comp in project.components %}
+                            <li>{{ comp.name }} - {{ comp.status }}</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+                <td>{{ project.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

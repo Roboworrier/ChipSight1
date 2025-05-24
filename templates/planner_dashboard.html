@@ -1,0 +1,78 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<!-- 
+Copyright (c) 2025 Diwakar Singh.
+Licensed under MIT for open-source use (see LICENSE) or
+COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
+-->
+<h3 class="header-custom">Planner Dashboard</h3>
+<form method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit" class="btn btn-primary">Upload Plan</button>
+</form>
+
+<div class="table-responsive mt-4">
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Bot ID</th>
+                <th>Cycle Time</th>
+                <th>Completion Date</th>
+                <th>Quantity</th>
+                <th>Produced</th>
+                <th>Machine</th>
+                <th>Tool</th>
+                <th>Status</th>
+                <th>Completed Time</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bot in bots %}
+            <tr>
+                <td>{{ bot.bot_id }}</td>
+                <td>{{ bot.cycle_time }}</td>
+                <td>{{ bot.completion_date }}</td>
+                <td>{{ bot.quantity }}</td>
+                <td>{{ bot.produced }}</td>
+                <td>{{ bot.machine }}</td>
+                <td>{{ bot.tool }}</td>
+                <td>{{ bot.status }}</td>
+                <td>{{ bot.completed_time if bot.status == 'Completed' else '-' }}</td>
+                <td><a href="/delete/{{ bot.bot_id }}" class="btn btn-danger btn-sm">Delete</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- New section for multi-component bot projects -->
+<h4 class="header-custom mt-5">Bot Projects Overview</h4>
+<div class="table-responsive">
+    <table class="table table-bordered table-hover">
+        <thead class="table-secondary">
+            <tr>
+                <th>Project Name</th>
+                <th>Components</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for project in bot_projects %}
+            <tr>
+                <td>{{ project.name }}</td>
+                <td>
+                    <ul>
+                    {% for comp in project.components %}
+                        <li>{{ comp.name }} - {{ comp.status }}</li>
+                    {% endfor %}
+                    </ul>
+                </td>
+                <td>{{ project.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

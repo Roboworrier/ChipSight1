@@ -1,0 +1,20 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<h3>Validate Bot</h3>
+<form method="POST">
+    <input name="bot_id" placeholder="Enter Bot ID" required>
+    <button type="submit" class="btn btn-warning">Validate</button>
+</form>
+{% if result %}
+<div class="mt-4">
+    <p><strong>Bot ID:</strong> {{ result.bot_id }}</p>
+    <p><strong>Status:</strong> {{ result.status }}</p>
+    <p><strong>Planned Quantity:</strong> {{ result.quantity }}</p>
+    <p><strong>Produced:</strong> {{ result.produced }}</p>
+    <p><strong>Machine:</strong> {{ result.machine }}</p>
+    <p><strong>Tool:</strong> {{ result.tool }}</p>
+    <p><strong>Start Time:</strong> {{ result.start_time }}</p>
+    <p><strong>Completed Time:</strong> {{ result.completed_time }}</p>
+</div>
+{% endif %}
+{% endblock %}

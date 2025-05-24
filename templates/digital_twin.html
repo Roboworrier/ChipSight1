@@ -1,0 +1,186 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<!-- 
+Copyright (c) 2025 Diwakar Singh.
+Licensed under MIT for open-source use (see LICENSE) or
+COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
+-->
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h3>Digital Twin View</h3>
+            <div>
+                <span class="badge bg-light text-dark me-2">Live</span>
+                <span class="badge bg-info">Updated: {{ now.strftime('%H:%M:%S') }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for machine in machines %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100 machine-card" data-machine="{{ machine.name }}">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">{{ machine.name }}</h5>
+                        <span class="badge {% if machine.status == 'Running' %}bg-danger{% else %}bg-success{% endif %}">
+                            {{ machine.status }}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        {% if machine.current_job %}
+                        <div class="mb-3">
+                            <h6>Current Job</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <th>Bot ID:</th>
+                                    <td>{{ machine.current_job.bot_id }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Tool:</th>
+                                    <td>{{ machine.current_job.tool }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Cycle Time:</th>
+                                    <td>{{ machine.current_job.cycle_time }}s</td>
+                                </tr>
+                                <tr>
+                                    <th>Started:</th>
+                                    <td>{{ machine.current_job.start_time }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Production Progress</h6>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Completed: {{ machine.current_job.actual }}/{{ machine.current_job.planned }}</span>
+                                <span>{{ machine.current_job.progress|round(1) }}%</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                     role="progressbar" 
+                                     style="width: {{ machine.current_job.progress }}%">
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-cpu" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Machine Idle</p>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mt-3">
+                            <h6>Machine Health</h6>
+                            <div class="row">
+                                <div class="col-4 text-center">
+                                    <div class="gauge-container">
+                                        <div class="gauge" data-value="{{ machine.health.score }}">
+                                            <div class="gauge-body">
+                                                <div class="gauge-fill"></div>
+                                                <div class="gauge-cover">{{ machine.health.score|int }}%</div>
+                                            </div>
+                                            <div class="gauge-label">Health</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-center">
+                                        <div class="display-6">{{ machine.health.temperature }}°C</div>
+                                        <small class="text-muted">Temperature</small>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-center">
+                                        <div class="display-6">{{ machine.health.vibration }} mm/s</div>
+                                        <small class="text-muted">Vibration</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .gauge-container {
+        width: 100%;
+        max-width: 100px;
+        margin: 0 auto;
+    }
+    .gauge {
+        position: relative;
+    }
+    .gauge-body {
+        width: 100%;
+        height: 0;
+        padding-bottom: 50%;
+        position: relative;
+        border-top-left-radius: 100% 200%;
+        border-top-right-radius: 100% 200%;
+        overflow: hidden;
+        background: #f5f5f5;
+    }
+    .gauge-fill {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+        transform-origin: center top;
+        transform: rotate(0.5turn);
+        transition: transform 0.5s ease-out;
+    }
+    .gauge-cover {
+        width: 75%;
+        height: 150%;
+        background: white;
+        border-radius: 50%;
+        position: absolute;
+        top: 25%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .gauge-label {
+        text-align: center;
+        font-size: 0.8rem;
+        margin-top: 0.5rem;
+    }
+</style>
+
+<script>
+    // Update gauges based on health score
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.gauge').forEach(gauge => {
+            const value = parseFloat(gauge.dataset.value);
+            const fill = gauge.querySelector('.gauge-fill');
+            const rotation = value / 100 * 0.5;
+            fill.style.transform = `rotate(${rotation}turn)`;
+            
+            // Set color based on value
+            if (value < 30) {
+                fill.style.background = '#dc3545';
+            } else if (value < 70) {
+                fill.style.background = '#ffc107';
+            } else {
+                fill.style.background = '#28a745';
+            }
+        });
+        
+        // Auto-refresh every 10 seconds
+        setTimeout(() => {
+            window.location.reload();
+        }, 10000);
+    });
+</script>
+{% endblock %}

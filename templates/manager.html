@@ -1,0 +1,84 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<!-- 
+Copyright (c) 2025 Diwakar Singh.
+Licensed under MIT for open-source use (see LICENSE) or
+COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
+-->
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h3>Management Dashboard</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <!-- KPI Cards -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Overall OEE</h5>
+                        <h2 class="display-4">{{ kpis.oee }}</h2>
+                        <div class="progress mt-2">
+                            <div class="progress-bar" style="width: {{ kpis.oee.split('%')[0] }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Total Output</h5>
+                        <h2 class="display-4">{{ kpis.throughput }}</h2>
+                        <p class="text-muted">Parts Completed</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Downtime</h5>
+                        <h2 class="display-4">{{ kpis.downtime }}</h2>
+                        <p class="text-muted">Machines Idle</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-Time Chart -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h4>Production Status</h4>
+            </div>
+            <div class="card-body">
+                <canvas id="statusChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Running', 'Idle', 'Completed'],
+            datasets: [{
+                data: [0, 0, 0],
+                backgroundColor: ['#d10000', '#28a745', '#0056b3']
+            }]
+        }
+    });
+
+    function handleMachineUpdate(data) {
+        chart.data.datasets[0].data = [
+            data.data.running,
+            data.data.idle,
+            data.data.completed
+        ];
+        chart.update();
+    }
+
+    fetch('/api/initial_status').then(r => r.json()).then(handleMachineUpdate);
+</script>
+{% endblock %}

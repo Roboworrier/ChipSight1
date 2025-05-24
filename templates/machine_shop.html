@@ -1,0 +1,87 @@
+{% extends 'base_template.html' %}
+{% block content %}
+<!-- 
+Copyright (c) 2025 Diwakar Singh.
+Licensed under MIT for open-source use (see LICENSE) or
+COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
+-->
+<h3 class="header-custom">Machine Shop Status</h3>
+
+<!-- Current Assignments Table -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4>Current Assignments</h4>
+    </div>
+    <div class="card-body">
+        <table class="table table-bordered">
+            <thead class="table-danger">
+                <tr>
+                    <th>Machine</th>
+                    <th>Status</th>
+                    <th>Bot Assigned</th>
+                    <th>Quantity</th>
+                    <th>Produced</th>
+                    <th>Start Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for machine in machines %}
+                {% set ns = namespace(is_running=false, bot_id='', start_time='', quantity=0, produced=0) %}
+                {% for bot_id, info in assignments.items() %}
+                    {% set bot = bots | selectattr('bot_id', 'equalto', bot_id) | list | first %}
+                    {% if info.machine == machine %}
+                        {% set ns.is_running = true %}
+                        {% set ns.bot_id = bot_id %}
+                        {% set ns.start_time = info.start_time %}
+                        {% if bot %}
+                            {% set ns.quantity = bot.quantity %}
+                            {% set ns.produced = bot.produced %}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                <tr class="table-light">
+                    <td>{{ machine }}</td>
+                    <td>
+                        {% if ns.is_running %}
+                            <span class="badge bg-danger">Running</span>
+                        {% else %}
+                            <span class="badge bg-success">Idle</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ ns.bot_id if ns.is_running else '-' }}</td>
+                    <td>{{ ns.quantity if ns.is_running else '-' }}</td>
+                    <td>{{ ns.produced if ns.is_running else '-' }}</td>
+                    <td>{{ ns.start_time if ns.is_running else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Assignment Form -->
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h4>Assign Bot to Machine</h4>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="/assign">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <input name="bot_id" class="form-control" placeholder="Bot ID" required>
+                </div>
+                <div class="col-md-5">
+                    <select name="machine" class="form-select">
+                        {% for machine in machines %}
+                        <option>{{ machine }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-secondary w-100">Assign</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

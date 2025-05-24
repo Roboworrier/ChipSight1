@@ -1,0 +1,6 @@
+# Inside VS Code, create .gitignore and add:
+__pycache__/
+venv/
+*.log
+uploads/
+.DS_Store
