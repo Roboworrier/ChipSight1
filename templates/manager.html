@@ -1,84 +1,295 @@
-{% extends 'base_template.html' %}
+{% extends "base_template.html" %}
+
 {% block content %}
-<!-- 
-Copyright (c) 2025 Diwakar Singh.
-Licensed under MIT for open-source use (see LICENSE) or
-COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
--->
-<div class="card">
-    <div class="card-header bg-primary text-white">
-        <h3>Management Dashboard</h3>
+<div class="container-fluid mt-4">
+    <h2 class="header-custom">Machine Shop Manager Dashboard</h2>
+
+    <!-- Drawing Details Upload -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Upload Drawing Details</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data" action="{{ url_for('upload_drawings') }}">
+                <div class="mb-3">
+                    <label for="drawing_file" class="form-label">Drawing Details Excel (.xlsx)</label>
+                    <input type="file" class="form-control" id="drawing_file" name="file" accept=".xlsx" required>
+                    <div class="form-text">File must contain: drawing_number, sap_id</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Drawings</button>
+            </form>
+        </div>
     </div>
-    <div class="card-body">
-        <div class="row">
-            <!-- KPI Cards -->
-            <div class="col-md-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Overall OEE</h5>
-                        <h2 class="display-4">{{ kpis.oee }}</h2>
-                        <div class="progress mt-2">
-                            <div class="progress-bar" style="width: {{ kpis.oee.split('%')[0] }}%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="col-md-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Total Output</h5>
-                        <h2 class="display-4">{{ kpis.throughput }}</h2>
-                        <p class="text-muted">Parts Completed</p>
-                    </div>
-                </div>
+    <!-- Drawing Database -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Drawing Database</h5>
+        </div>
+        <div class="card-body">
+            {% if drawings %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>SAP ID</th>
+                            <th>Project</th>
+                            <th>End Product</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for drawing in drawings %}
+                        <tr>
+                            <td>{{ drawing.drawing_number }}</td>
+                            <td>{{ drawing.sap_id }}</td>
+                            <td>{{ drawing.project.code if drawing.project else '-' }}</td>
+                            <td>{{ drawing.project.end_product if drawing.project else '-' }}</td>
+                            <td>
+                                {% if drawing.latest_status %}
+                                <span class="badge bg-{{ drawing.latest_status.status_color }}">
+                                    {{ drawing.latest_status.status_text }}
+                                </span>
+                                {% else %}
+                                <span class="badge bg-secondary">Not Started</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <p class="text-muted mb-0">No drawings uploaded yet. Use the form above to upload drawing details.</p>
+            {% endif %}
+        </div>
+    </div>
 
-            <div class="col-md-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Downtime</h5>
-                        <h2 class="display-4">{{ kpis.downtime }}</h2>
-                        <p class="text-muted">Machines Idle</p>
-                    </div>
-                </div>
+    <!-- Rework Status -->
+    <div class="card">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Rework Queue</h5>
+        </div>
+        <div class="card-body">
+            {% if rework_queue %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>Project</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Rejection Reason</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rework in rework_queue %}
+                        <tr>
+                            <td>{{ rework.drawing_number }}</td>
+                            <td>{{ rework.project_code }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'warning' if rework.type == 'FPI' else 'info' }}">
+                                    {{ rework.type }}
+                                </span>
+                            </td>
+                            <td>{{ rework.quantity }}</td>
+                            <td>{{ rework.rejection_reason }}</td>
+                            <td>{{ rework.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if rework.status == 'Pending' else 'success' }}">
+                                    {{ rework.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No items in rework queue.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Deletion History Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-danger text-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Deletions</h5>
+                <input type="text" id="deletionSearch" class="form-control form-control-sm w-25" placeholder="Search deletions...">
             </div>
         </div>
+        <div class="card-body">
+            {% if deleted_items %}
+            <div class="table-responsive">
+                <table class="table table-sm" id="deletionTable">
+                    <thead>
+                        <tr>
+                            <th>Deleted At</th>
+                            <th>Type</th>
+                            <th>Project Code</th>
+                            <th>Project Name</th>
+                            <th>SAP ID</th>
+                            <th>Batch</th>
+                            <th>End Product</th>
+                            <th>Quantities (Plan/Actual)</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in deleted_items %}
+                        <tr>
+                            <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if item.deletion_type == 'project' else 'warning' }}">
+                                    {{ item.deletion_type|title }}
+                                </span>
+                            </td>
+                            <td>{{ item.project_code }}</td>
+                            <td>{{ item.project_name }}</td>
+                            <td>{{ item.sap_id }}</td>
+                            <td>{{ item.batch_number }}</td>
+                            <td>{{ item.end_product }}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ item.planned_quantity }}/{{ item.actual_quantity }}</span>
+                            </td>
+                            <td>{{ item.reason or 'No reason provided' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No deletion history available.</p>
+            {% endif %}
+        </div>
+    </div>
 
-        <!-- Real-Time Chart -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h4>Production Status</h4>
+    <!-- Existing Drawings Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Active Drawings</h5>
+        </div>
+        <div class="card-body">
+            {% if drawings %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>SAP ID</th>
+                            <th>Project</th>
+                            <th>Status</th>
+                            <th>Deletion Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for drawing in drawings %}
+                        <tr>
+                            <td>{{ drawing.drawing_number }}</td>
+                            <td>{{ drawing.sap_id }}</td>
+                            <td>
+                                {% if drawing.project %}
+                                    {{ drawing.project.name }}
+                                {% else %}
+                                    <span class="text-muted">No project assigned</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if drawing.latest_status %}
+                                    <span class="badge bg-{{ drawing.latest_status.status_color }}">
+                                        {{ drawing.latest_status.status_text }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Not Started</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if drawing.deletion_info %}
+                                    <span class="badge bg-danger">
+                                        {{ drawing.deletion_info.type }} Deleted on {{ drawing.deletion_info.deleted_at.strftime('%Y-%m-%d') }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-success">Active</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div class="card-body">
-                <canvas id="statusChart" height="100"></canvas>
+            {% else %}
+            <p class="text-muted mb-0">No drawings available.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Rework Queue Section -->
+    <div class="card">
+        <div class="card-header bg-warning">
+            <h5 class="mb-0">Rework Queue</h5>
+        </div>
+        <div class="card-body">
+            {% if rework_queue %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>Type</th>
+                            <th>Remaining Quantity</th>
+                            <th>Rejection Reason</th>
+                            <th>Created At</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in rework_queue %}
+                        <tr>
+                            <td>{{ item.drawing_number }}</td>
+                            <td>{{ item.type }}</td>
+                            <td>{{ item.remaining_quantity }}</td>
+                            <td>{{ item.rejection_reason }}</td>
+                            <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'warning' if item.status == 'Pending' else 'primary' if item.status == 'In Progress' else 'success' }}">
+                                    {{ item.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <p class="text-muted mb-0">No items in rework queue.</p>
+            {% endif %}
         </div>
     </div>
 </div>
 
 <script>
-    const ctx = document.getElementById('statusChart').getContext('2d');
-    const chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Running', 'Idle', 'Completed'],
-            datasets: [{
-                data: [0, 0, 0],
-                backgroundColor: ['#d10000', '#28a745', '#0056b3']
-            }]
+// Search functionality for deletion history
+document.getElementById('deletionSearch').addEventListener('keyup', function() {
+    const searchText = this.value.toLowerCase();
+    const table = document.getElementById('deletionTable');
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        let show = false;
+        const cells = rows[i].getElementsByTagName('td');
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().indexOf(searchText) > -1) {
+                show = true;
+                break;
+            }
         }
-    });
-
-    function handleMachineUpdate(data) {
-        chart.data.datasets[0].data = [
-            data.data.running,
-            data.data.idle,
-            data.data.completed
-        ];
-        chart.update();
+        rows[i].style.display = show ? '' : 'none';
     }
-
-    fetch('/api/initial_status').then(r => r.json()).then(handleMachineUpdate);
+});
 </script>
 {% endblock %}

@@ -1,87 +1,170 @@
-{% extends 'base_template.html' %}
+{% extends "base_template.html" %}
+
 {% block content %}
-<!-- 
-Copyright (c) 2025 Diwakar Singh.
-Licensed under MIT for open-source use (see LICENSE) or
-COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
--->
-<h3 class="header-custom">Machine Shop Status</h3>
+<div class="container mt-4">
+    <h2 class="header-custom">Machine Shop Management</h2>
 
-<!-- Current Assignments Table -->
-<div class="card mb-4">
-    <div class="card-header bg-primary text-white">
-        <h4>Current Assignments</h4>
-    </div>
-    <div class="card-body">
-        <table class="table table-bordered">
-            <thead class="table-danger">
-                <tr>
-                    <th>Machine</th>
-                    <th>Status</th>
-                    <th>Bot Assigned</th>
-                    <th>Quantity</th>
-                    <th>Produced</th>
-                    <th>Start Time</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for machine in machines %}
-                {% set ns = namespace(is_running=false, bot_id='', start_time='', quantity=0, produced=0) %}
-                {% for bot_id, info in assignments.items() %}
-                    {% set bot = bots | selectattr('bot_id', 'equalto', bot_id) | list | first %}
-                    {% if info.machine == machine %}
-                        {% set ns.is_running = true %}
-                        {% set ns.bot_id = bot_id %}
-                        {% set ns.start_time = info.start_time %}
-                        {% if bot %}
-                            {% set ns.quantity = bot.quantity %}
-                            {% set ns.produced = bot.produced %}
-                        {% endif %}
-                    {% endif %}
-                {% endfor %}
-                <tr class="table-light">
-                    <td>{{ machine }}</td>
-                    <td>
-                        {% if ns.is_running %}
-                            <span class="badge bg-danger">Running</span>
-                        {% else %}
-                            <span class="badge bg-success">Idle</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ ns.bot_id if ns.is_running else '-' }}</td>
-                    <td>{{ ns.quantity if ns.is_running else '-' }}</td>
-                    <td>{{ ns.produced if ns.is_running else '-' }}</td>
-                    <td>{{ ns.start_time if ns.is_running else '-' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Assignment Form -->
-<div class="card">
-    <div class="card-header bg-primary text-white">
-        <h4>Assign Bot to Machine</h4>
-    </div>
-    <div class="card-body">
-        <form method="POST" action="/assign">
-            <div class="row g-3">
-                <div class="col-md-5">
-                    <input name="bot_id" class="form-control" placeholder="Bot ID" required>
+    <!-- Drawing Upload Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Upload Drawing Details</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data" class="mb-3">
+                <div class="mb-3">
+                    <label for="file" class="form-label">Select Excel File (.xlsx)</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".xlsx" required>
+                    <div class="form-text">File should contain: drawing_number, sap_id</div>
                 </div>
-                <div class="col-md-5">
-                    <select name="machine" class="form-select">
-                        {% for machine in machines %}
-                        <option>{{ machine }}</option>
+                <button type="submit" class="btn btn-primary">Upload Drawings</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Current Drawings Table -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Drawing Database</h5>
+        </div>
+        <div class="card-body">
+            {% if drawings %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>SAP ID</th>
+                            <th>Project</th>
+                            <th>End Product</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for drawing in drawings %}
+                        <tr>
+                            <td>{{ drawing.drawing_number }}</td>
+                            <td>{{ drawing.sap_id }}</td>
+                            <td>{{ drawing.project_code if drawing.project_code else '-' }}</td>
+                            <td>{{ drawing.end_product if drawing.end_product else '-' }}</td>
+                        </tr>
                         {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-secondary w-100">Assign</button>
-                </div>
+                    </tbody>
+                </table>
             </div>
-        </form>
+            {% else %}
+            <p class="text-muted mb-0">No drawings uploaded yet. Use the form above to upload drawing details.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Current Assignments Table -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Current Machine Assignments</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Machine</th>
+                            <th>Status</th>
+                            <th>Drawing Number</th>
+                            <th>Quantity</th>
+                            <th>Produced</th>
+                            <th>Start Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for machine in machines %}
+                        <tr>
+                            <td>{{ machine }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if machine in active_machines else 'success' }}">
+                                    {{ 'Running' if machine in active_machines else 'Idle' }}
+                                </span>
+                            </td>
+                            <td>{{ assignments[machine].drawing_number if machine in assignments else '-' }}</td>
+                            <td>{{ assignments[machine].quantity if machine in assignments else '-' }}</td>
+                            <td>{{ assignments[machine].produced if machine in assignments else '-' }}</td>
+                            <td>{{ assignments[machine].start_time if machine in assignments else '-' }}</td>
+                            <td>
+                                {% if machine not in active_machines %}
+                                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignModal" data-machine="{{ machine }}">
+                                    Assign
+                                </button>
+                                {% else %}
+                                <button type="button" class="btn btn-danger btn-sm" onclick="unassignMachine('{{ machine }}')">
+                                    Unassign
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
-{% endblock %}
+
+<!-- Assignment Modal -->
+<div class="modal fade" id="assignModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Assign Drawing to Machine</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('assign_machine') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="machine" id="modalMachine">
+                    <div class="mb-3">
+                        <label for="drawing_number" class="form-label">Drawing Number</label>
+                        <select class="form-select" id="drawing_number" name="drawing_number" required>
+                            <option value="">Select Drawing</option>
+                            {% for drawing in drawings %}
+                            <option value="{{ drawing.drawing_number }}">
+                                {{ drawing.drawing_number }} - {{ drawing.end_product }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required min="1">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Assign</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('assignModal').addEventListener('show.bs.modal', function (event) {
+    var button = event.relatedTarget;
+    var machine = button.getAttribute('data-machine');
+    document.getElementById('modalMachine').value = machine;
+});
+
+function unassignMachine(machine) {
+    if (confirm('Are you sure you want to unassign this machine?')) {
+        fetch('/unassign_machine', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ machine: machine })
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            }
+        });
+    }
+}
+</script>
+{% endblock %} 

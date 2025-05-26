@@ -5,182 +5,340 @@ Copyright (c) 2025 Diwakar Singh.
 Licensed under MIT for open-source use (see LICENSE) or
 COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
 -->
-<div class="card">
-    <div class="card-header bg-primary text-white">
-        <div class="d-flex justify-content-between align-items-center">
-            <h3>Digital Twin View</h3>
-            <div>
-                <span class="badge bg-light text-dark me-2">Live</span>
-                <span class="badge bg-info">Updated: {{ now.strftime('%H:%M:%S') }}</span>
+<div class="container-fluid mt-4">
+    <!-- Overview Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Projects</h5>
+                    <h2 class="mb-0">{{ total_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Completed</h5>
+                    <h2 class="mb-0">{{ completed_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h5 class="card-title">In Progress</h5>
+                    <h2 class="mb-0">{{ in_progress_projects }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Delayed</h5>
+                    <h2 class="mb-0">{{ delayed_projects }}</h2>
+                </div>
             </div>
         </div>
     </div>
-    <div class="card-body">
-        <div class="row">
-            {% for machine in machines %}
-            <div class="col-md-4 mb-4">
-                <div class="card h-100 machine-card" data-machine="{{ machine.name }}">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">{{ machine.name }}</h5>
-                        <span class="badge {% if machine.status == 'Running' %}bg-danger{% else %}bg-success{% endif %}">
-                            {{ machine.status }}
-                        </span>
-                    </div>
-                    <div class="card-body">
-                        {% if machine.current_job %}
-                        <div class="mb-3">
-                            <h6>Current Job</h6>
-                            <table class="table table-sm">
-                                <tr>
-                                    <th>Bot ID:</th>
-                                    <td>{{ machine.current_job.bot_id }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Tool:</th>
-                                    <td>{{ machine.current_job.tool }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Cycle Time:</th>
-                                    <td>{{ machine.current_job.cycle_time }}s</td>
-                                </tr>
-                                <tr>
-                                    <th>Started:</th>
-                                    <td>{{ machine.current_job.start_time }}</td>
-                                </tr>
-                            </table>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <h6>Production Progress</h6>
-                            <div class="d-flex justify-content-between mb-1">
-                                <span>Completed: {{ machine.current_job.actual }}/{{ machine.current_job.planned }}</span>
-                                <span>{{ machine.current_job.progress|round(1) }}%</span>
-                            </div>
-                            <div class="progress" style="height: 25px;">
-                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                                     role="progressbar" 
-                                     style="width: {{ machine.current_job.progress }}%">
-                                </div>
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="text-center text-muted py-4">
-                            <i class="bi bi-cpu" style="font-size: 2rem;"></i>
-                            <p class="mt-2">Machine Idle</p>
-                        </div>
-                        {% endif %}
-                        
-                        <div class="mt-3">
-                            <h6>Machine Health</h6>
-                            <div class="row">
-                                <div class="col-4 text-center">
-                                    <div class="gauge-container">
-                                        <div class="gauge" data-value="{{ machine.health.score }}">
-                                            <div class="gauge-body">
-                                                <div class="gauge-fill"></div>
-                                                <div class="gauge-cover">{{ machine.health.score|int }}%</div>
-                                            </div>
-                                            <div class="gauge-label">Health</div>
+
+    <!-- Projects Progress -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Projects Progress</h5>
+            <input type="text" id="projectSearch" class="form-control form-control-sm w-25" placeholder="Search projects...">
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="projectsTable">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>End Product</th>
+                            <th>Drawing Number</th>
+                            <th>Progress</th>
+                            <th>Setup Time</th>
+                            <th>Cycle Time</th>
+                            <th>Quality</th>
+                            <th>Due Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for project in projects %}
+                            {% for product in project.end_products.values() %}
+                            <tr>
+                                <td>{{ project.code }} - {{ project.name }}</td>
+                                <td>{{ product.name }}</td>
+                                <td>{{ product.drawing_number or product.sap_id }}</td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar {% if product.completion_percentage == 100 %}bg-success{% elif product.on_time %}bg-info{% else %}bg-warning{% endif %}"
+                                             role="progressbar"
+                                             style="width: {{ product.completion_percentage }}%">
+                                            {{ product.completion_percentage|round|int }}%
                                         </div>
                                     </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ product.setup_time_status }}">
+                                        {{ product.actual_setup_time|round(1) }}/{{ product.standard_setup_time }} min
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ product.cycle_time_status }}">
+                                        {{ product.actual_cycle_time|round(1) }}/{{ product.standard_cycle_time }} min
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'warning' if product.rework_qty > 0 else 'success' }}">
+                                        {{ product.completed_qty }}/{{ product.total_qty }}
+                                        {% if product.rework_qty > 0 %}
+                                        ({{ product.rework_qty }} in rework)
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if product.on_time else 'danger' }}">
+                                        {{ product.completion_date }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Time Performance Trends -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Setup Time Trends</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="setupTimeChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Cycle Time Trends</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="cycleTimeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quality Overview -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Quality Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="qualityChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Rework History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Drawing</th>
+                                    <th>Type</th>
+                                    <th>Pieces</th>
+                                    <th>Reason</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rework in rework_history %}
+                                <tr>
+                                    <td>{{ rework.drawing_number }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if rework.type == 'FPI' else 'info' }}">
+                                            {{ rework.type }}
+                                        </span>
+                                    </td>
+                                    <td>{{ rework.quantity }}</td>
+                                    <td>{{ rework.rejection_reason }}</td>
+                                    <td>{{ rework.created_at.strftime('%Y-%m-%d') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OEE Metrics -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Overall Equipment Effectiveness (OEE)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Availability</h6>
+                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.availability >= 85 else 'text-warning' if oee_metrics.availability >= 65 else 'text-danger' }}">
+                                        {{ "%.1f"|format(oee_metrics.availability) }}%
+                                    </h3>
                                 </div>
-                                <div class="col-4">
-                                    <div class="text-center">
-                                        <div class="display-6">{{ machine.health.temperature }}°C</div>
-                                        <small class="text-muted">Temperature</small>
-                                    </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Performance</h6>
+                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.performance >= 85 else 'text-warning' if oee_metrics.performance >= 65 else 'text-danger' }}">
+                                        {{ "%.1f"|format(oee_metrics.performance) }}%
+                                    </h3>
                                 </div>
-                                <div class="col-4">
-                                    <div class="text-center">
-                                        <div class="display-6">{{ machine.health.vibration }} mm/s</div>
-                                        <small class="text-muted">Vibration</small>
-                                    </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Quality</h6>
+                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.quality >= 85 else 'text-warning' if oee_metrics.quality >= 65 else 'text-danger' }}">
+                                        {{ "%.1f"|format(oee_metrics.quality) }}%
+                                    </h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6>Overall OEE</h6>
+                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.oee >= 85 else 'text-warning' if oee_metrics.oee >= 65 else 'text-danger' }}">
+                                        {{ "%.1f"|format(oee_metrics.oee) }}%
+                                    </h3>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            {% endfor %}
         </div>
     </div>
 </div>
 
-<style>
-    .gauge-container {
-        width: 100%;
-        max-width: 100px;
-        margin: 0 auto;
-    }
-    .gauge {
-        position: relative;
-    }
-    .gauge-body {
-        width: 100%;
-        height: 0;
-        padding-bottom: 50%;
-        position: relative;
-        border-top-left-radius: 100% 200%;
-        border-top-right-radius: 100% 200%;
-        overflow: hidden;
-        background: #f5f5f5;
-    }
-    .gauge-fill {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
-        transform-origin: center top;
-        transform: rotate(0.5turn);
-        transition: transform 0.5s ease-out;
-    }
-    .gauge-cover {
-        width: 75%;
-        height: 150%;
-        background: white;
-        border-radius: 50%;
-        position: absolute;
-        top: 25%;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.8rem;
-        font-weight: bold;
-    }
-    .gauge-label {
-        text-align: center;
-        font-size: 0.8rem;
-        margin-top: 0.5rem;
-    }
-</style>
-
 <script>
-    // Update gauges based on health score
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.gauge').forEach(gauge => {
-            const value = parseFloat(gauge.dataset.value);
-            const fill = gauge.querySelector('.gauge-fill');
-            const rotation = value / 100 * 0.5;
-            fill.style.transform = `rotate(${rotation}turn)`;
-            
-            // Set color based on value
-            if (value < 30) {
-                fill.style.background = '#dc3545';
-            } else if (value < 70) {
-                fill.style.background = '#ffc107';
-            } else {
-                fill.style.background = '#28a745';
+// Search functionality
+document.getElementById('projectSearch').addEventListener('keyup', function() {
+    var searchText = this.value.toLowerCase();
+    var table = document.getElementById('projectsTable');
+    var rows = table.getElementsByTagName('tr');
+
+    for (var i = 1; i < rows.length; i++) {
+        var show = false;
+        var cells = rows[i].getElementsByTagName('td');
+        for (var j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toLowerCase().indexOf(searchText) > -1) {
+                show = true;
+                break;
             }
-        });
-        
-        // Auto-refresh every 10 seconds
-        setTimeout(() => {
-            window.location.reload();
-        }, 10000);
-    });
+        }
+        rows[i].style.display = show ? '' : 'none';
+    }
+});
+
+// Setup Time Chart
+const setupCtx = document.getElementById('setupTimeChart').getContext('2d');
+new Chart(setupCtx, {
+    type: 'line',
+    data: {
+        labels: {{ time_performance_labels|tojson }},
+        datasets: [{
+            label: 'Actual Setup Time',
+            data: {{ setup_time_data|tojson }},
+            borderColor: 'rgba(54, 162, 235, 1)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Setup Time Trends (minutes)'
+            }
+        }
+    }
+});
+
+// Cycle Time Chart
+const cycleCtx = document.getElementById('cycleTimeChart').getContext('2d');
+new Chart(cycleCtx, {
+    type: 'line',
+    data: {
+        labels: {{ time_performance_labels|tojson }},
+        datasets: [{
+            label: 'Actual Cycle Time',
+            data: {{ cycle_time_data|tojson }},
+            borderColor: 'rgba(255, 99, 132, 1)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Cycle Time Trends (minutes)'
+            }
+        }
+    }
+});
+
+// Quality Chart
+const qualityCtx = document.getElementById('qualityChart').getContext('2d');
+new Chart(qualityCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Completed', 'In Progress', 'Rework', 'Pending'],
+        datasets: [{
+            data: {{ quality_data|tojson }},
+            backgroundColor: [
+                'rgba(40, 167, 69, 0.8)',
+                'rgba(23, 162, 184, 0.8)',
+                'rgba(255, 193, 7, 0.8)',
+                'rgba(108, 117, 125, 0.8)'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'right'
+            }
+        }
+    }
+});
+
+// Auto-refresh every 30 seconds
+setTimeout(() => {
+    window.location.reload();
+}, 30000);
 </script>
 {% endblock %}
