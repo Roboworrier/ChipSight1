@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Machine Report - ChipSight{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h2 class="mb-4">Machine Production Report</h2>
+
+    <!-- Date Range Selector -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label for="start_date" class="form-label">Start Date</label>
+                    <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label for="end_date" class="form-label">End Date</label>
+                    <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary">Update Report</button>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-success" onclick="exportToExcel()">
+                        <i class="fas fa-file-excel me-2"></i>Export to Excel
+                    </button>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-info" onclick="downloadPDF()">
+                        <i class="fas fa-file-pdf me-2"></i>Download PDF
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Report Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-bordered table-sm" id="reportTable">
+            <thead class="table-dark">
+                <tr>
+                    <!-- Time Management -->
+                    <th>Date</th>
+                    <th>Shift</th>
+                    
+                    <!-- Machine & Operator -->
+                    <th>Machine</th>
+                    <th>Operator</th>
+                    <th>Drawing</th>
+                    
+                    <!-- Downtime Categories -->
+                    <th>Tool Change</th>
+                    <th>Inspection</th>
+                    <th>Engagement</th>
+                    <th>Rework</th>
+                    <th>Minor Stoppage</th>
+                    <th>Setup Time</th>
+                    <th>Tea Break</th>
+                    <th>TBT</th>
+                    <th>Lunch</th>
+                    <th>5S</th>
+                    <th>PM</th>
+                    
+                    <!-- Production Metrics -->
+                    <th>Planned Qty</th>
+                    <th>Completed Qty</th>
+                    
+                    <!-- Time Standards -->
+                    <th>Std Setup Time</th>
+                    <th>Std Cycle Time</th>
+                    <th>Actual Setup Time</th>
+                    <th>Actual Cycle Time</th>
+                    
+                    <!-- OEE Components -->
+                    <th>A (%)</th>
+                    <th>P (%)</th>
+                    <th>Q (%)</th>
+                    <th>OEE (%)</th>
+                    
+                    <!-- Status & Issues -->
+                    <th>Status</th>
+                    <th>Quality Status</th>
+                    <th>Reason</th>
+                    <th>Machine Power</th>
+                    <th>Program Issues</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_data %}
+                <tr>
+                    <td>{{ row.date }}</td>
+                    <td>{{ row.shift }}</td>
+                    <td>{{ row.machine }}</td>
+                    <td>{{ row.operator }}</td>
+                    <td>{{ row.drawing }}</td>
+                    <td>{{ row.tool_change }}</td>
+                    <td>{{ row.inspection }}</td>
+                    <td>{{ row.engagement }}</td>
+                    <td>{{ row.rework }}</td>
+                    <td>{{ row.minor_stoppage }}</td>
+                    <td>{{ row.setup_time }}</td>
+                    <td>{{ row.tea_break }}</td>
+                    <td>{{ row.tbt }}</td>
+                    <td>{{ row.lunch }}</td>
+                    <td>{{ row['5s'] }}</td>
+                    <td>{{ row.pm }}</td>
+                    <td>{{ row.planned_qty }}</td>
+                    <td>{{ row.completed_qty }}</td>
+                    <td>{{ row.std_setup_time }}</td>
+                    <td>{{ row.std_cycle_time }}</td>
+                    <td>{{ row.actual_setup_time }}</td>
+                    <td>{{ row.actual_cycle_time }}</td>
+                    <td>{{ row.availability }}</td>
+                    <td>{{ row.performance }}</td>
+                    <td>{{ row.quality }}</td>
+                    <td>{{ row.oee }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>{{ row.quality_status }}</td>
+                    <td>{{ row.reason }}</td>
+                    <td>{{ row.machine_power }}</td>
+                    <td>{{ row.program_issues }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Export Scripts -->
+<script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.20/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+function exportToExcel() {
+    const table = document.getElementById('reportTable');
+    const wb = XLSX.utils.table_to_book(table, {
+        sheet: "Machine Report",
+        dateNF: 'yyyy-mm-dd'
+    });
+    const fileName = `machine_report_${document.getElementById('start_date').value}_to_${document.getElementById('end_date').value}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+}
+
+function downloadPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l', 'pt', 'a3'); // Landscape, points, A3 size
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('Machine Production Report', 40, 40);
+    
+    // Add date range
+    doc.setFontSize(12);
+    const dateRange = `Period: ${document.getElementById('start_date').value} to ${document.getElementById('end_date').value}`;
+    doc.text(dateRange, 40, 60);
+    
+    // Add table
+    doc.autoTable({
+        html: '#reportTable',
+        startY: 70,
+        styles: { fontSize: 8 },
+        columnStyles: { 0: { cellWidth: 30 } },
+        margin: { top: 80 },
+        pageBreak: 'auto',
+        rowPageBreak: 'avoid'
+    });
+    
+    const fileName = `machine_report_${document.getElementById('start_date').value}_to_${document.getElementById('end_date').value}.pdf`;
+    doc.save(fileName);
+}
+</script>
+{% endblock %} 

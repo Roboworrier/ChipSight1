@@ -24,7 +24,6 @@ wheels/
 venv/
 ENV/
 env/
-.env
 
 # IDE
 .idea/
@@ -33,17 +32,18 @@ env/
 *.swo
 
 # Database
-instance/
 *.db
 *.sqlite3
 
 # Logs
 *.log
 
-# Excel files (except templates)
-*.xlsx
-!templates/*.xlsx
+# Environment variables
+.env
 
-# Local development
+# Uploads folder (since it's for user uploads)
+uploads/
+
+# System Files
 .DS_Store
 Thumbs.db

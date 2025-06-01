@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Operator Panel - {{ machine_name if machine_name else 'ChipSight' }}{% endblock %}
+{% block title %}Leadwell-2 Operator Panel - ChipSight{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-        <h1 class="h2">Operator Panel</h1>
+        <h1 class="h2">Leadwell-2 Operator Panel</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
             <span class="me-3"><strong>Operator:</strong> {{ session.get('username', 'N/A') }}</span>
             <span class="me-3"><strong>Machine:</strong> {{ machine_name | default('N/A') }} ({{ machine_status | default('Unknown') }})</span>
@@ -28,15 +28,15 @@
         <!-- Drawing Selection & Info -->
         <div class="col-lg-4 mb-4">
             <div class="card h-100">
-        <div class="card-header">
-                    <i class="fas fa-ruler-combined me-1"></i> Current Drawing & Setup
-        </div>
-        <div class="card-body">
-                    <form method="POST" action="{{ url_for('operator_panel') }}" class="mb-3">
+                <div class="card-header bg-success text-white">
+                    <i class="fas fa-ruler-combined me-1"></i> Leadwell-2 Drawing & Setup
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('operator_panel_leadwell2') }}" class="mb-3">
                         <input type="hidden" name="action" value="select_drawing_and_start_session">
                         <div class="input-group">
                             <input type="text" class="form-control" name="drawing_number_input" placeholder="Enter Drawing Number" value="{{ drawing_number_input if drawing_number_input }}">
-                            <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search me-1"></i>Select</button>
+                            <button class="btn btn-outline-success" type="submit"><i class="fas fa-search me-1"></i>Select</button>
                         </div>
                     </form>
                     
@@ -116,13 +116,13 @@
                     {% endif %}
                 </div>
             </div>
-    </div>
+        </div>
 
         <!-- Actions -->
         <div class="col-lg-8 mb-4">
             <div class="card h-100">
-                <div class="card-header">
-                    <i class="fas fa-cogs me-1"></i> Production Actions
+                <div class="card-header bg-success text-white">
+                    <i class="fas fa-cogs me-1"></i> Leadwell-2 Production Actions
                 </div>
                 <div class="card-body">
                     {# Machine Breakdown Status and Controls #}
@@ -133,8 +133,8 @@
                                     <div class="alert alert-danger d-flex align-items-center" role="alert">
                                         <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
                                         <div>
-                                            <strong>Machine is in BREAKDOWN!</strong> All production actions are disabled.
-                                            <form method="POST" action="{{ url_for('operator_panel') }}" class="mt-2">
+                                            <strong>Leadwell-2 is in BREAKDOWN!</strong> All production actions are disabled.
+                                            <form method="POST" action="{{ url_for('operator_panel_leadwell2') }}" class="mt-2">
                                                 <button type="submit" name="action" value="mark_machine_healthy" class="btn btn-sm btn-success">
                                                     <i class="fas fa-tools me-1"></i> Mark Machine Healthy
                                                 </button>
@@ -142,7 +142,7 @@
                                         </div>
                                     </div>
                                 {% else %}
-                                    <form method="POST" action="{{ url_for('operator_panel') }}" class="float-end">
+                                    <form method="POST" action="{{ url_for('operator_panel_leadwell2') }}" class="float-end">
                                         <button type="submit" name="action" value="report_breakdown" class="btn btn-sm btn-outline-danger">
                                             <i class="fas fa-skull-crossbones me-1"></i> Report Machine Breakdown
                                         </button>
@@ -161,7 +161,7 @@
                     {# Disable all actions if machine is in breakdown #}
                     {% set machine_operational = current_machine_obj and current_machine_obj.status != 'breakdown' %}
 
-                    <form method="POST" action="{{ url_for('operator_panel') }}">
+                    <form method="POST" action="{{ url_for('operator_panel_leadwell2') }}">
                         <div class="row gy-3">
                             <!-- Setup Actions -->
                             <div class="col-md-6 col-xl-4">
@@ -171,24 +171,24 @@
                                                           current_log.current_status in ['lpi_completed', 'admin_closed', 'fpi_failed_setup_pending']) and
                                                          (not is_drawing_globally_held_for_fpi or
                                                           (current_log and current_log.drawing_id == active_drawing.id and current_log.current_status == 'fpi_failed_setup_pending')) %}
-                                <button type="submit" name="action" value="start_setup" class="btn btn-lg btn-outline-primary w-100"
+                                <button type="submit" name="action" value="start_setup" class="btn btn-lg btn-outline-success w-100"
                                         {% if not allow_new_setup %}disabled{% endif %}>
                                     <i class="fas fa-tools me-2"></i>Start Setup
-                                            </button>
+                                </button>
                                 <small class="form-text text-muted d-block">Begin new setup for selected drawing. Creates new log.</small>
                             </div>
                             <div class="col-md-6 col-xl-4">
-                                <button type="submit" name="action" value="setup_done" class="btn btn-lg btn-primary w-100" 
+                                <button type="submit" name="action" value="setup_done" class="btn btn-lg btn-success w-100" 
                                         {% if not machine_operational or not current_log or current_log.current_status != 'setup_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
                                     <i class="fas fa-check-double me-2"></i>Setup Done
-                                            </button>
+                                </button>
                                 <small class="form-text text-muted d-block">Mark current setup as complete.</small>
                             </div>
-                             <div class="col-md-6 col-xl-4">
+                            <div class="col-md-6 col-xl-4">
                                 <button type="submit" name="action" value="cancel_current_drawing_log" class="btn btn-lg btn-outline-danger w-100"
                                         {% if not machine_operational or not current_log or current_log.current_status in ['lpi_completed', 'admin_closed'] or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
                                     <i class="fas fa-times-circle me-2"></i>Cancel Log
-                                            </button>
+                                </button>
                                 <small class="form-text text-muted d-block">Cancel current active log for this drawing.</small>
                             </div>
                             
@@ -196,98 +196,91 @@
 
                             <!-- Cycle Actions -->
                             <div class="col-md-4">
-                                {% set can_start_cycle = False %}
-                                {% if machine_operational and active_drawing and current_log and current_log.drawing_id == active_drawing.id %}
-                                    {% if current_log.current_status in ['setup_done', 'fpi_passed_ready_for_cycle', 'cycle_paused'] %}
-                                        {# If drawing is globally held by ANOTHER log, cannot start cycle #}
-                                        {% if is_drawing_globally_held_for_fpi and 'OTHER LOG HOLDING' in fpi_hold_message_for_template %}
-                                            {# Keep can_start_cycle as False #}
-                                        {# Else, if held by current log (or no global hold), check current log's specific FPI hold status #}
-                                        {% elif not current_log.production_hold_fpi %}
-                                            {% set can_start_cycle = True %}
-                                        {% endif %}
-                                    {% endif %}
-                                {% endif %}
-                                <button type="submit" name="action" value="cycle_start" class="btn btn-lg btn-outline-success w-100" 
-                                        {% if not can_start_cycle %}disabled{% endif %}>
-                                    <i class="fas fa-play-circle me-2"></i>Start Cycle
+                                <button type="submit" name="action" value="cycle_start" class="btn btn-lg btn-success w-100"
+                                        {% if not machine_operational or not current_log or
+                                           current_log.current_status not in ['setup_done', 'fpi_passed_ready_for_cycle', 'cycle_paused'] or
+                                           (current_log.drawing_id != active_drawing.id if active_drawing else True) or
+                                           is_drawing_globally_held_for_fpi %}disabled{% endif %}>
+                                    <i class="fas fa-play me-2"></i>Start Cycle
                                 </button>
-                                <small class="form-text text-muted d-block">Begin/resume production cycle.</small>
+                                <small class="form-text text-muted d-block">Begin production cycle.</small>
                             </div>
                             <div class="col-md-4">
-                                <button type="submit" name="action" value="cycle_complete" class="btn btn-lg btn-success w-100" 
+                                <button type="submit" name="action" value="cycle_complete" class="btn btn-lg btn-outline-success w-100"
                                         {% if not machine_operational or not current_log or current_log.current_status != 'cycle_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
-                                    <i class="fas fa-check-circle me-2"></i>Cycle Complete
+                                    <i class="fas fa-check-circle me-2"></i>Complete Cycle
                                 </button>
                                 <small class="form-text text-muted d-block">Mark current cycle as complete.</small>
-                    </div>
+                            </div>
                             <div class="col-md-4">
-                                {% if machine_operational and current_log and current_log.current_status == 'cycle_started' and (current_log.drawing_id == active_drawing.id if active_drawing else False) %}
-                                    <button type="submit" name="action" value="cycle_pause" class="btn btn-lg btn-outline-secondary w-100">
-                                        <i class="fas fa-pause-circle me-2"></i>Pause Cycle
-                                    </button>
-                                    <small class="form-text text-muted d-block">Pause the current production cycle.</small>
-                                {% elif machine_operational and current_log and current_log.current_status == 'cycle_paused' and (current_log.drawing_id == active_drawing.id if active_drawing else False) %}
-                                    <button type="submit" name="action" value="cycle_start" class="btn btn-lg btn-outline-info w-100" {% if not can_start_cycle %}disabled{% endif %}> {# Resume is also 'cycle_start' #}
-                                        <i class="fas fa-play-circle me-2"></i>Resume Cycle
-                                    </button>
-                                    <small class="form-text text-muted d-block">Resume the paused production cycle.</small>
-            {% else %}
-                                    <button type="button" class="btn btn-lg btn-outline-secondary w-100" disabled>
-                                        <i class="fas fa-pause-circle me-2"></i>Pause/Resume
-                                    </button>
-                                    <small class="form-text text-muted d-block">No active or paused cycle.</small>
-            {% endif %}
+                                <button type="submit" name="action" value="cycle_pause" class="btn btn-lg btn-warning w-100"
+                                        {% if not machine_operational or not current_log or current_log.current_status != 'cycle_started' or (current_log.drawing_id != active_drawing.id if active_drawing else True) %}disabled{% endif %}>
+                                    <i class="fas fa-pause me-2"></i>Pause Cycle
+                                </button>
+                                <small class="form-text text-muted d-block">Temporarily pause current cycle.</small>
                             </div>
                         </div>
                     </form>
+                </div>
+            </div>
         </div>
     </div>
 
-            {% if current_log and (current_log.drawing_id == active_drawing.id if active_drawing else False) %}
-            <div class="card mt-3">
-                <div class="card-header">
-                    <i class="fas fa-clipboard-list me-1"></i> Current Operation Log Details (ID: {{current_log.id}})
+    <!-- Active Logs Management Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Active Logs Management</h5>
+        </div>
+        <div class="card-body">
+            <!-- Rework Queue Section -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Available Rework Items</h5>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p class="mb-1"><strong>Status:</strong> {{ current_log.current_status | replace('_',' ') | title }}</p>
-                            <p class="mb-1"><strong>Planned Qty (this run):</strong> {{ current_log.run_planned_quantity }}</p>
-                            <p class="mb-1"><strong>Completed Qty (this run):</strong> {{ current_log.run_completed_quantity | default(0) }}</p>
-                             <p class="mb-1"><strong>FPI Status (this log):</strong> 
-                                <span class="badge 
-                                    {% if current_log.fpi_status == 'pass' %}bg-success
-                                    {% elif current_log.fpi_status == 'pending' %}bg-warning text-dark
-                                    {% else %}bg-danger{% endif %}">
-                                    {{ current_log.fpi_status | title }}
-                                            </span>
-                                {% if current_log.production_hold_fpi %} <span class="badge bg-danger small">Log Production Held</span>{% endif %}
-                            </p>
-                            <p class="mb-1"><strong>LPI Status (this log):</strong> 
-                                <span class="badge 
-                                    {% if current_log.lpi_status == 'pass' %}bg-success
-                                    {% elif current_log.lpi_status == 'pending' %}bg-warning text-dark
-                                    {% else %}bg-danger{% endif %}">
-                                    {{ current_log.lpi_status | title }}
-                                            </span>
-                            </p>
-                    </div>
-                        <div class="col-md-6">
-                            <p class="mb-1"><small><strong>Setup Start:</strong> {{ current_log.setup_start_time.strftime('%H:%M:%S') if current_log.setup_start_time else 'N/A' }}</small></p>
-                            <p class="mb-1"><small><strong>Setup End:</strong> {{ current_log.setup_end_time.strftime('%H:%M:%S') if current_log.setup_end_time else 'N/A' }}</small></p>
-                            <p class="mb-1"><small><strong>Last Cycle Start:</strong> {{ current_log.last_cycle_start_time.strftime('%H:%M:%S') if current_log.last_cycle_start_time else 'N/A' }}</small></p>
-                            <p class="mb-1"><small><strong>Last Cycle End:</strong> {{ current_log.last_cycle_end_time.strftime('%H:%M:%S') if current_log.last_cycle_end_time else 'N/A' }}</small></p>
-            </div>
-                    </div>
-                    {% if current_log.notes %}
-                    <hr class="my-2">
-                    <p class="mb-1"><small><strong>Log Notes:</strong> {{ current_log.notes }}</small></p>
+                    {% if approved_rework_items %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Drawing Number</th>
+                                        <th>Quantity</th>
+                                        <th>Original Log</th>
+                                        <th>Rejection Reason</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in approved_rework_items %}
+                                    <tr>
+                                        <td>{{ item.drawing_rel.drawing_number }}</td>
+                                        <td>{{ item.quantity_to_rework }}</td>
+                                        <td>{{ item.source_operator_log_id }}</td>
+                                        <td>{{ item.rejection_reason | truncate(50) }}</td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('operator_panel_leadwell2') }}" style="display: inline;">
+                                                <input type="hidden" name="action" value="start_rework">
+                                                <input type="hidden" name="rework_id" value="{{ item.id }}">
+                                                <button type="submit" class="btn btn-sm btn-info">
+                                                    <i class="fas fa-sync-alt"></i> Start Rework
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center">No approved rework items available</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center text-muted">No rework items currently approved for processing.</p>
                     {% endif %}
                 </div>
             </div>
-            {% endif %}
         </div>
     </div>
 </div>
-{% endblock %}
+{% endblock %} 

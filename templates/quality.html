@@ -1,442 +1,470 @@
-﻿{% extends "base_template.html" %}
+{% extends "base.html" %}
+
+{% block title %}Quality Dashboard - ChipSight{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="{{ url_for('static', filename='css/quality.css') }}" rel="stylesheet">
+{# <link href="{{ url_for('static', filename='css/quality.css') }}" rel="stylesheet"> #} {# Assuming this might not be strictly needed or can be integrated later #}
+<style>
+    .action-form-cell {
+        min-width: 350px; /* Adjust as needed */
+        padding: 1rem;
+    }
+    .log-details-cell {
+        min-width: 200px; /* Adjust as needed */
+    }
+    .table-responsive {
+        /* max-height: 75vh; */ /* Enable if vertical scroll is desired for the table body */
+    }
+    .table th, .table td {
+        vertical-align: middle;
+    }
+    .form-label-sm {
+        font-size: 0.8rem;
+        margin-bottom: 0.2rem;
+    }
+    .btn-sm-custom {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    #qualityTabsContentLegacy .card-title {
+        font-size: 1.1rem;
+        color: #6c757d;
+    }
+    .fs-smallest {
+        font-size: .75em;
+    }
+</style>
 <script>
-    // Prevent Bootstrap from modifying body styles
-    document.addEventListener('DOMContentLoaded', function() {
-        const originalSetAttribute = Element.prototype.setAttribute;
-        Element.prototype.setAttribute = function(name, value) {
-            if (this.tagName === 'BODY' && (name === 'style' || name === 'class')) {
-                return;
+    function toggleActionRow(logId) {
+        var row = document.getElementById('action-row-' + logId);
+        var button = document.getElementById('action-button-' + logId);
+        if (row && button) {
+            if (row.style.display === 'none' || row.style.display === '') {
+                row.style.display = 'table-row';
+                button.classList.add('active');
+                button.innerHTML = 'Hide Actions <i class="fas fa-chevron-up ms-1"></i>';
+            } else {
+                row.style.display = 'none';
+                button.classList.remove('active');
+                var actionType = button.getAttribute('data-action-type');
+                button.innerHTML = actionType + ' Action <i class="fas fa-chevron-down ms-1"></i>';
             }
-            originalSetAttribute.call(this, name, value);
-        };
-    });
+        }
+    }
 </script>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid">
     <div class="row">
-        <!-- Quality Check Form -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Quality Check Entry</h5>
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <i class="fas fa-check-circle me-1"></i>
+                            Quality Dashboard
+                        </div>
+                        <div class="col-auto">
+                            <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <form id="qualityForm" method="POST" action="{{ url_for('quality') }}">
-                        <!-- Drawing Selection with Manual Entry -->
-                        <div class="form-group mb-3">
-                            <label for="drawing_number">Drawing Number</label>
-                            <div class="input-group">
-                                <select class="form-select" id="drawing_number" name="drawing_number" required>
-                                    <option value="">Select Drawing</option>
-                                    {% for drawing in active_drawings %}
-                                    <option value="{{ drawing }}">{{ drawing }}</option>
-                                    {% endfor %}
-                                </select>
-                                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#manualDrawingModal">
-                                    <i class="bi bi-pencil"></i> Manual Entry
-                                </button>
+                    <!-- Inspector Name Section -->
+                    {% if not inspector_name %}
+                    <div class="alert alert-warning" role="alert">
+                        <form method="POST" action="{{ url_for('quality_dashboard') }}" class="row g-3 align-items-center">
+                            <input type="hidden" name="action" value="set_inspector_name">
+                            <div class="col-auto">
+                                <label for="inspector_name" class="col-form-label"><i class="fas fa-user me-1"></i>Enter Your Inspector Name:</label>
                             </div>
-                            <small class="text-muted">Select from list or enter manually</small>
+                            <div class="col-auto">
+                                <input type="text" class="form-control" id="inspector_name" name="inspector_name" required>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-primary">Set Name</button>
+                            </div>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-user me-1"></i>Inspector: <strong>{{ inspector_name }}</strong>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary edit-inspector-name">
+                                <i class="fas fa-edit me-1"></i>Edit Name
+                            </button>
                         </div>
-
-                        <!-- Dynamic Content - Updated via AJAX -->
-                        <div id="drawingDetails" style="display: none;">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label>Batch Number</label>
-                                        <input type="text" class="form-control" id="batch_id" name="batch_id">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label>Planned Quantity</label>
-                                        <input type="number" class="form-control" id="planned_qty" name="planned_quantity" min="1" required>
-                                    </div>
-                                </div>
+                        <form id="updateInspectorForm" method="POST" action="{{ url_for('quality_dashboard') }}" class="mt-2" style="display: none;">
+                            <input type="hidden" name="action" value="update_inspector_name">
+                            <div class="input-group">
+                                <input type="text" class="form-control" name="inspector_name" value="{{ inspector_name }}" required>
+                                <button type="submit" class="btn btn-primary">Update</button>
+                                <button type="button" class="btn btn-secondary cancel-edit">Cancel</button>
                             </div>
+                        </form>
+                    </div>
+                    {% endif %}
 
-                            <div class="row">
-                                <div class="col-md-4">
-                                    <div class="form-group mb-3">
-                                        <label>Completed</label>
-                                        <input type="text" class="form-control" id="completed_qty" readonly>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group mb-3">
-                                        <label>Rejected</label>
-                                        <input type="text" class="form-control" id="rejected_qty" readonly>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group mb-3">
-                                        <label>In Rework</label>
-                                        <input type="text" class="form-control" id="rework_qty" readonly>
-                                    </div>
-                                </div>
-                            </div>
+    <h2 class="mt-4 mb-3 section-title">Quality Assurance Dashboard</h2>
 
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="check_type">Inspection Type</label>
-                                        <select class="form-select" id="check_type" name="check_type" required>
-                                            <option value="">Select Type</option>
-                                            <option value="First Part">First Part Inspection (FPI)</option>
-                                            <option value="In Process">In-Process Inspection</option>
-                                            <option value="Last Part">Last Part Inspection (LPI)</option>
-                                            <option value="Final">Final Inspection</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="quantity_checked">Quantity to Check</label>
-                                        <input type="number" class="form-control" id="quantity_checked" name="quantity_checked" min="1" required>
-                                    </div>
-                                </div>
-                            </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
 
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="result">Result</label>
-                                        <select class="form-select" id="result" name="result" required>
-                                            <option value="">Select Result</option>
-                                            <option value="Pass">Pass</option>
-                                            <option value="Reject">Reject</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group mb-3">
-                                        <label for="inspector_id">Inspector ID</label>
-                                        <input type="text" class="form-control" id="inspector_id" name="inspector_id" required>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="rejectionSection" style="display: none;">
-                                <div class="form-group mb-3">
-                                    <label for="rejection_reason">Rejection Reason</label>
-                                    <textarea class="form-control" id="rejection_reason" name="rejection_reason" rows="2"></textarea>
-                                </div>
-                            </div>
-
-                            <div class="form-group mb-3">
-                                <label for="inspection_station">Inspection Station</label>
-                                <input type="text" class="form-control" id="inspection_station" name="inspection_station" required>
-                            </div>
-
-                            <button type="submit" class="btn btn-primary">Submit Quality Check</button>
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Quality Log & Action Center</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('quality_dashboard') }}" class="row gx-3 gy-2 align-items-end mb-3 p-3 border bg-light rounded">
+                        <input type="hidden" name="action" value="select_drawing"> {# Retains 'select_drawing' action for setting inspector/filter #}
+                        <div class="col-md-4">
+                            <label for="quality_inspector_name_table" class="form-label fw-bold">Inspector Name:</label>
+                            <input type="text" class="form-control" id="quality_inspector_name_table" name="quality_inspector_name" value="{{ inspector_name if inspector_name }}" required placeholder="Enter your name">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="drawing_number_filter_table" class="form-label">Filter by Drawing (Optional):</label>
+                            <input type="text" class="form-control" id="drawing_number_filter_table" name="drawing_number_input" value="{{ selected_drawing_number if selected_drawing_number }}" placeholder="Enter Drawing No. to filter">
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter me-1"></i>Set/Filter</button>
                         </div>
                     </form>
-                </div>
-            </div>
-        </div>
+                    
+                    {% if not inspector_name %}
+                    <div class="alert alert-warning mt-2" role="alert">
+                        <i class="fas fa-exclamation-triangle me-1"></i> Please enter your <strong>Inspector Name</strong> above to enable submission actions in the table.
+                    </div>
+                    {% endif %}
 
-        <!-- Rework Queue -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">Rework Queue</h5>
-                </div>
-                <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover table-sm align-middle">
                             <thead>
                                 <tr>
+                                    <th>Log ID</th>
                                     <th>Drawing</th>
-                                    <th>Type</th>
-                                    <th>Quantity</th>
+                                    <th>Machine</th>
+                                    <th>Operator</th>
                                     <th>Status</th>
-                                    <th>Success Rate</th>
+                                    <th>Qty</th>
+                                    <th>FPI Status</th>
+                                    <th>LPI Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for item in rework_queue %}
-                                <tr>
-                                    <td>{{ item.drawing_number }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'warning' if item.type == 'First Part' 
-                                                               else 'info' if item.type == 'In Process'
-                                                               else 'primary' if item.type == 'Last Part'
-                                                               else 'secondary' }}">
-                                            {{ item.type }}
-                                        </span>
-                                    </td>
-                                    <td>{{ item.remaining_quantity }}/{{ item.initial_quantity }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'primary' if item.status == 'In Progress' 
-                                                               else 'warning' if item.status == 'Pending'
-                                                               else 'success' }}">
-                                            {{ item.status }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% set success_rate = item.rework_success_rate %}
-                                        {% set bar_class = 'bg-success' if success_rate >= 80 else 'bg-warning' if success_rate >= 50 else 'bg-danger' %}
-                                        <div class="progress">
-                                            <div class="progress-bar {{ bar_class }}"
-                                                 role="progressbar"
-                                                 style="width: {{ success_rate }}%"
-                                                 aria-valuenow="{{ success_rate }}"
-                                                 aria-valuemin="0"
-                                                 aria-valuemax="100">
-                                                {{ "%.1f"|format(success_rate) }}%
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
+                                {% for log in pending_fpi_logs + pending_lpi_logs %}
+                                    <tr>
+                                        <td>{{ log.id }}</td>
+                                        <td>{{ log.drawing_rel.drawing_number if log.drawing_rel else 'N/A' }}</td>
+                                        <td>{{ log.operator_session_rel.machine_rel.name if log.operator_session_rel and log.operator_session_rel.machine_rel else 'N/A' }}</td>
+                                        <td>{{ log.operator_session_rel.operator_name if log.operator_session_rel else 'N/A' }}</td>
+                                        <td>{{ log.current_status | replace('_', ' ') | title }}</td>
+                                        <td>{{ log.run_completed_quantity }} / {{ log.run_planned_quantity }}</td>
+                                        <td class="text-center">
+                                            <span class="badge {% if log.fpi_status == 'pass' %}bg-success
+                                                {% elif log.fpi_status == 'pending' and log.current_status == 'cycle_completed_pending_fpi' %}bg-warning text-dark
+                                                {% elif log.fpi_status in ['fail','rework'] %}bg-danger
+                                                {% else %}bg-light text-dark border{% endif %}">
+                                                {{ log.fpi_status | title }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge {% if log.lpi_status == 'pass' %}bg-success
+                                                {% elif log.lpi_status == 'pending' and log.current_status == 'cycle_completed_pending_lpi' %}bg-warning text-dark
+                                                {% elif log.lpi_status in ['fail','rework'] %}bg-danger
+                                                {% else %}bg-light text-dark border{% endif %}">
+                                                {{ log.lpi_status | title }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if inspector_name %}
+                                                {% if log.current_status == 'cycle_completed_pending_fpi' and log.fpi_status == 'pending' %}
+                                                    <button class="btn btn-sm btn-info w-100 btn-sm-custom action-button" data-log-id="{{ log.id }}" data-action-type="FPI">
+                                                        FPI Action <i class="fas fa-chevron-down ms-1"></i>
+                                                    </button>
+                                                {% elif log.current_status == 'cycle_completed_pending_lpi' and log.lpi_status == 'pending' %}
+                                                    <button class="btn btn-sm btn-primary w-100 btn-sm-custom action-button" data-log-id="{{ log.id }}" data-action-type="LPI">
+                                                        LPI Action <i class="fas fa-chevron-down ms-1"></i>
+                                                    </button>
+                                                {% endif %}
+                                            {% else %}
+                                                <small class="text-muted">Set inspector name first</small>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <!-- Action form row -->
+                                    <tr id="action-row-{{ log.id }}" style="display: none;">
+                                        <td colspan="9" class="action-form-cell bg-light border-start border-end border-bottom border-3 border-info">
+                                            {% if log.current_status == 'cycle_completed_pending_fpi' and log.fpi_status == 'pending' %}
+                                                <form method="POST" action="{{ url_for('quality_dashboard') }}" class="p-2">
+                                                    <input type="hidden" name="action" value="submit_fpi">
+                                                    <input type="hidden" name="log_id" value="{{ log.id }}">
+                                                    <input type="hidden" name="quality_inspector_name" value="{{ inspector_name }}">
+                                                    <h6 class="mb-2"><i class="fas fa-microscope me-1"></i>FPI for Log ID: {{ log.id }} (Drw: {{ log.drawing_rel.drawing_number }})</h6>
+                                                    <div class="mb-2">
+                                                        <label for="fpi_rejection_reason_{{ log.id }}" class="form-label form-label-sm">Rejection/Rework Reason (if not Pass)</label>
+                                                        <textarea class="form-control form-control-sm" id="fpi_rejection_reason_{{ log.id }}" name="rejection_reason" rows="1"></textarea>
+                                                    </div>
+                                                    <div class="btn-group w-100" role="group">
+                                                        <button type="submit" name="result" value="pass" class="btn btn-success btn-sm">Pass</button>
+                                                        <button type="submit" name="result" value="rework" class="btn btn-warning btn-sm">Rework</button>
+                                                        <button type="submit" name="result" value="reject" class="btn btn-danger btn-sm">Reject</button>
+                                                    </div>
+                                                </form>
+                                            {% elif log.current_status == 'cycle_completed_pending_lpi' and log.lpi_status == 'pending' %}
+                                                <form method="POST" action="{{ url_for('quality_dashboard') }}" class="p-2">
+                                                    <input type="hidden" name="action" value="submit_lpi">
+                                                    <input type="hidden" name="log_id" value="{{ log.id }}">
+                                                    <input type="hidden" name="quality_inspector_name" value="{{ inspector_name }}">
+                                                    <h6 class="mb-2"><i class="fas fa-clipboard-check me-1"></i>LPI for Log ID: {{ log.id }} (Drw: {{ log.drawing_rel.drawing_number }}) - Completed: {{log.run_completed_quantity}} of Plan: {{log.run_planned_quantity}}</h6>
+                                                    <div class="row g-2 mb-2">
+                                                        <div class="col-md-4">
+                                                            <label class="form-label form-label-sm">Quantity Inspected</label>
+                                                            <input type="number" class="form-control form-control-sm" name="quantity_inspected" required min="1" max="{{ log.run_completed_quantity }}">
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label form-label-sm">Quantity Rejected</label>
+                                                            <input type="number" class="form-control form-control-sm" name="quantity_rejected" value="0" min="0">
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label form-label-sm">Quantity to Rework</label>
+                                                            <input type="number" class="form-control form-control-sm" name="quantity_to_rework" value="0" min="0">
+                                                        </div>
+                                                    </div>
+                                                    <div class="mb-2">
+                                                        <label for="lpi_rejection_reason_{{ log.id }}" class="form-label form-label-sm">Rejection/Rework Reason (if any)</label>
+                                                        <textarea class="form-control form-control-sm" id="lpi_rejection_reason_{{ log.id }}" name="rejection_reason" rows="1"></textarea>
+                                                    </div>
+                                                    <div class="btn-group w-100" role="group">
+                                                        <button type="submit" name="result" value="pass" class="btn btn-success btn-sm">Pass</button>
+                                                        <button type="submit" name="result" value="rework" class="btn btn-warning btn-sm">Rework</button>
+                                                        <button type="submit" name="result" value="reject" class="btn btn-danger btn-sm">Reject</button>
+                                                    </div>
+                                                </form>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted">No logs pending quality checks</td>
+                                    </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <!-- Recent Quality Checks -->
-            <div class="card mt-4">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Recent Quality Checks</h5>
+    <hr class="my-5">
+
+    <!-- Legacy Tabbed Interface -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <h4 class="text-muted mb-3"><i class="fas fa-archive me-2"></i>Legacy Inspection Forms (Drawing Specific)</h4>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-search me-1"></i> Load Drawing for Legacy Forms
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Drawing</th>
-                                    <th>Type</th>
-                                    <th>Result</th>
-                                    <th>Quantity</th>
-                                    <th>Inspector</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for check in checks.items %}
-                                <tr>
-                                    <td>{{ check.drawing_number }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'warning' if check.type == 'First Part' 
-                                                               else 'info' if check.type == 'In Process'
-                                                               else 'primary' if check.type == 'Last Part'
-                                                               else 'secondary' }}">
-                                            {{ check.type }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-{{ 'success' if check.result == 'Pass' else 'danger' }}">
-                                            {{ check.result }}
-                                        </span>
-                                    </td>
-                                    <td>{{ check.quantity_checked }}</td>
-                                    <td>{{ check.inspector_id }}</td>
-                                    <td>{{ check.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                    <form method="POST" action="{{ url_for('quality_dashboard') }}">
+                        <input type="hidden" name="action" value="select_drawing">
+                        <div class="mb-3">
+                            <label for="drawing_number_input_legacy" class="form-label">Drawing Number</label>
+                            <input type="text" class="form-control" id="drawing_number_input_legacy" name="drawing_number_input" value="{{ selected_drawing_number if selected_drawing_number }}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="quality_inspector_name_legacy" class="form-label">Inspector Name (Context)</label>
+                            <input type="text" class="form-control" id="quality_inspector_name_legacy" name="quality_inspector_name" value="{{ inspector_name if inspector_name }}" readonly>
+                        </div>
+                        <button type="submit" class="btn btn-secondary"><i class="fas fa-search me-1"></i>Load for Legacy View</button>
+                    </form>
+                    <hr>
+                    {% if selected_drawing_info %}
+                        <h6>Drawing: {{ selected_drawing_info.drawing_number }}</h6>
+                        <small class="d-block"><strong>SAP ID:</strong> {{ selected_drawing_info.sap_id }}</small>
+                        <small class="d-block"><strong>Product:</strong> {{ selected_drawing_info.end_product_rel.name if selected_drawing_info.end_product_rel }}</small>
+                    {% elif selected_drawing_number %}
+                        <p class="text-danger">Drawing '{{ selected_drawing_number }}' not found for legacy view.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
+
+        <div class="col-lg-8 mb-4">
+            {% if not selected_drawing_number and inspector_name %}
+                <div class="alert alert-secondary">Load a drawing using the form on the left to use the legacy FPI/LPI submission views.</div>
+            {% elif not inspector_name %}
+                 <div class="alert alert-warning">Set Inspector Name in the main section above to use legacy views.</div>
+            {% endif %}
+
+            {% if inspector_name and selected_drawing_number %}
+            <ul class="nav nav-tabs" id="qualityTabsLegacy" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="fpi-tab-legacy" data-bs-toggle="tab" data-bs-target="#fpi-content-legacy" type="button" role="tab" aria-controls="fpi-content-legacy" aria-selected="true">FPI (Legacy)</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="lpi-tab-legacy" data-bs-toggle="tab" data-bs-target="#lpi-content-legacy" type="button" role="tab" aria-controls="lpi-content-legacy" aria-selected="false">LPI (Legacy)</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="qualityTabsContentLegacy">
+                <!-- FPI Content Legacy -->
+                <div class="tab-pane fade show active" id="fpi-content-legacy" role="tabpanel" aria-labelledby="fpi-tab-legacy">
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-microscope me-1"></i>FPI Submission (Legacy for Drw: {{ selected_drawing_number }})</h5>
+                            {% if log_for_fpi %}
+                                <p><small><strong>Target Log ID:</strong> {{ log_for_fpi.id }} (Machine: {{ log_for_fpi.operator_session_rel.machine_rel.name if log_for_fpi.operator_session_rel and log_for_fpi.operator_session_rel.machine_rel else 'N/A' }})</small></p>
+                                <p><small><strong>Operator:</strong> {{ log_for_fpi.operator_session_rel.operator_name if log_for_fpi.operator_session_rel else 'N/A' }} | <strong>Setup End:</strong> {{ log_for_fpi.setup_end_time.strftime('%Y-%m-%d %H:%M:%S') if log_for_fpi.setup_end_time }}</small></p>
+                                <p><strong>Current FPI Status for this Log:</strong> 
+                                    <span class="badge {% if log_for_fpi.fpi_status == 'pass' %}bg-success{% elif log_for_fpi.fpi_status in ['fail','rework'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                        {{ log_for_fpi.fpi_status | title if log_for_fpi.fpi_status else 'Pending' }}
+                                    </span>
+                                </p>
+                                
+                                {% if log_for_fpi.fpi_status == 'pending' and log_for_fpi.current_status == 'cycle_completed_pending_fpi' %}
+                                <form method="POST" action="{{ url_for('quality_dashboard') }}">
+                                    <input type="hidden" name="action" value="submit_fpi">
+                                    <input type="hidden" name="log_id" value="{{ log_for_fpi.id }}">
+                                    <input type="hidden" name="drawing_number_input" value="{{ selected_drawing_number }}">
+                                    <input type="hidden" name="quality_inspector_name" value="{{ inspector_name }}">
+                                    <div class="mb-3">
+                                        <label for="fpi_rejection_reason_legacy_form" class="form-label">Rejection/Rework Reason (if not Pass)</label>
+                                        <textarea class="form-control" id="fpi_rejection_reason_legacy_form" name="fpi_rejection_reason" rows="2"></textarea>
+                                    </div>
+                                    <div class="btn-group w-100" role="group">
+                                        <button type="submit" name="fpi_result" value="pass" class="btn btn-success">FPI Pass</button>
+                                        <button type="submit" name="fpi_result" value="rework" class="btn btn-warning">FPI Rework</button>
+                                        <button type="submit" name="fpi_result" value="fail" class="btn btn-danger">FPI Reject</button>
+                                    </div>
+                                </form>
+                                {% else %}
+                                    <p class="text-info"><small>FPI already submitted or log not in correct state for this legacy view.</small></p>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-muted"><small>No specific log awaiting FPI for '{{ selected_drawing_number }}' found for this legacy form. Use the main table above for all pending FPIs.</small></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LPI Content Legacy -->
+                <div class="tab-pane fade" id="lpi-content-legacy" role="tabpanel" aria-labelledby="lpi-tab-legacy">
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="fas fa-clipboard-check me-1"></i>LPI Submission (Legacy for Drw: {{ selected_drawing_number }})</h5>
+                            {% set specific_lpi_logs_for_drawing = lpi_pending_logs|selectattr('drawing_rel.drawing_number', 'equalto', selected_drawing_number)|list %}
+                            {% if specific_lpi_logs_for_drawing %}
+                                <form method="POST" action="{{ url_for('quality_dashboard') }}">
+                                    <input type="hidden" name="action" value="submit_lpi">
+                                    <input type="hidden" name="drawing_number_input" value="{{ selected_drawing_number }}">
+                                    <input type="hidden" name="quality_inspector_name" value="{{ inspector_name }}">
+                                    <div class="mb-3">
+                                        <label for="lpi_log_id_legacy_form" class="form-label">Select Operator Log for LPI:</label>
+                                        <select class="form-select" name="log_id" id="lpi_log_id_legacy_form" required>
+                                            <option value="" disabled selected>Choose a log for {{ selected_drawing_number }}...</option>
+                                            {% for log in specific_lpi_logs_for_drawing %}
+                                                <option value="{{ log.id }}">
+                                                    Log ID: {{ log.id }} (Op: {{ log.operator_session_rel.operator_name }}, Plan Qty: {{log.run_planned_quantity}}, Last Cycle: {{ log.last_cycle_end_time.strftime('%H:%M:%S') if log.last_cycle_end_time else 'N/A' }})
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label for="lpi_qty_inspected_legacy_form" class="form-label">Qty Inspected</label>
+                                            <input type="number" class="form-control" id="lpi_qty_inspected_legacy_form" name="lpi_quantity_inspected" min="1" value="0" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="lpi_qty_rework_legacy_form" class="form-label">Qty to Rework</label>
+                                            <input type="number" class="form-control" id="lpi_qty_rework_legacy_form" name="lpi_quantity_to_rework" min="0" value="0">
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="lpi_qty_rejected_legacy_form" class="form-label">Qty Rejected</label>
+                                            <input type="number" class="form-control" id="lpi_qty_rejected_legacy_form" name="lpi_quantity_rejected" min="0" value="0">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="lpi_rejection_reason_legacy_form" class="form-label">Rejection/Rework Reason</label>
+                                        <textarea class="form-control" id="lpi_rejection_reason_legacy_form" name="lpi_rejection_reason" rows="2"></textarea>
+                                    </div>
+                                    <div class="btn-group w-100" role="group">
+                                        <button type="submit" name="lpi_result" value="pass" class="btn btn-success">LPI Pass</button>
+                                        <button type="submit" name="lpi_result" value="rework" class="btn btn-warning">LPI Rework</button>
+                                        <button type="submit" name="lpi_result" value="fail" class="btn btn-danger">LPI Reject</button>
+                                    </div>
+                                </form>
+                            {% else %}
+                                <p class="text-muted"><small>No logs awaiting LPI for drawing '{{ selected_drawing_number }}' found for this legacy form. Use the main table above.</small></p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+                 <div class="alert alert-secondary mt-3">The legacy FPI/LPI forms require an inspector name (set above) and a drawing loaded via the 'Load Drawing for Legacy Forms' section. The main table above provides a comprehensive view.</div>
+            {% endif %}
+        </div>
     </div>
 </div>
-
-<!-- Manual Drawing Number Entry Modal -->
-<div class="modal" id="manualDrawingModal" tabindex="-1" role="dialog" aria-labelledby="manualDrawingModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="manualDrawingModalLabel">Manual Drawing Entry</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="manualDrawingForm">
-                    <div class="form-group mb-3">
-                        <label for="manual_drawing_number" class="form-label">Drawing Number:</label>
-                        <input type="text" class="form-control" id="manual_drawing_number" required>
-                        <small class="text-muted">
-                            Note: For drawings not in the dropdown list. Will be validated during submission.
-                        </small>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="manual_batch_number" class="form-label">Batch Number:</label>
-                        <input type="text" class="form-control" id="manual_batch_number" required>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="manual_planned_qty" class="form-label">Planned Quantity:</label>
-                        <input type="number" class="form-control" id="manual_planned_qty" min="1" required>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="confirmManualEntry">Confirm</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Add Bootstrap CSS and JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-
+<!-- JavaScript for form handling -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const drawingSelect = document.getElementById('drawing_number');
-    const drawingDetails = document.getElementById('drawingDetails');
-    const resultSelect = document.getElementById('result');
-    const rejectionSection = document.getElementById('rejectionSection');
-    const quantityChecked = document.getElementById('quantity_checked');
-    const modalElement = document.getElementById('manualDrawingModal');
-    
-    // Prevent modal from adding backdrop
-    const manualDrawingModal = new bootstrap.Modal(modalElement, {
-        backdrop: false,
-        keyboard: false
-    });
-    
-    // Custom modal open/close handling
-    document.querySelector('[data-bs-toggle="modal"]').addEventListener('click', function(e) {
-        e.preventDefault();
-        document.body.style.overflow = 'auto';
-        document.body.style.paddingRight = '0';
-        manualDrawingModal.show();
-    });
-    
-    modalElement.addEventListener('shown.bs.modal', function() {
-        document.body.style.overflow = 'auto';
-        document.body.style.paddingRight = '0';
-        document.body.classList.remove('modal-open');
-    });
-    
-    modalElement.addEventListener('hidden.bs.modal', function() {
-        document.getElementById('manualDrawingForm').reset();
-        document.body.style.overflow = 'auto';
-        document.body.style.paddingRight = '0';
-        document.body.classList.remove('modal-open');
-        
-        // Remove any backdrop that might have been added
-        const backdrop = document.querySelector('.modal-backdrop');
-        if (backdrop) {
-            backdrop.remove();
-        }
-    });
+    // Handle inspector name edit
+    const editButton = document.querySelector('.edit-inspector-name');
+    const cancelButton = document.querySelector('.cancel-edit');
+    const updateForm = document.getElementById('updateInspectorForm');
 
-    // Handle drawing selection
-    drawingSelect.addEventListener('change', function() {
-        if (this.value) {
-            // Show the form details
-            drawingDetails.style.display = 'block';
-            
-            // Fetch drawing details via AJAX
-            fetch(`/api/drawing_details/${this.value}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        // If no production record found, clear fields but keep form visible
-                        document.getElementById('batch_id').value = '';
-                        document.getElementById('planned_qty').value = '';
-                        document.getElementById('completed_qty').value = '0';
-                        document.getElementById('rejected_qty').value = '0';
-                        document.getElementById('rework_qty').value = '0';
-                        quantityChecked.max = '';
-                        quantityChecked.placeholder = 'Enter quantity';
-                    } else {
-                        document.getElementById('batch_id').value = data.batch_number;
-                        document.getElementById('planned_qty').value = data.planned_quantity;
-                        document.getElementById('completed_qty').value = data.completed_quantity;
-                        document.getElementById('rejected_qty').value = data.rejected_quantity;
-                        document.getElementById('rework_qty').value = data.rework_quantity;
-                        
-                        // Set max quantity that can be checked
-                        const remainingQty = data.planned_quantity - data.completed_quantity - data.rejected_quantity;
-                        quantityChecked.max = remainingQty;
-                        quantityChecked.placeholder = `Max ${remainingQty} pieces`;
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    drawingDetails.style.display = 'block';
-                    // Clear fields but keep form visible for manual entry
-                    document.getElementById('batch_id').value = '';
-                    document.getElementById('planned_qty').value = '';
-                    document.getElementById('completed_qty').value = '0';
-                    document.getElementById('rejected_qty').value = '0';
-                    document.getElementById('rework_qty').value = '0';
-                });
-        } else {
-            drawingDetails.style.display = 'none';
-        }
-    });
-    
-    // Handle manual entry
-    document.getElementById('confirmManualEntry').addEventListener('click', function() {
-        const manualDrawing = document.getElementById('manual_drawing_number').value.trim();
-        const manualBatch = document.getElementById('manual_batch_number').value.trim();
-        const manualQty = document.getElementById('manual_planned_qty').value;
-        
-        if (manualDrawing && manualBatch && manualQty) {
-            // Add to select if not exists
-            let exists = false;
-            for (let option of drawingSelect.options) {
-                if (option.value === manualDrawing) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists) {
-                const newOption = new Option(manualDrawing, manualDrawing);
-                drawingSelect.add(newOption);
-            }
-            
-            // Select the drawing
-            drawingSelect.value = manualDrawing;
-            
-            // Fill in the details
-            drawingDetails.style.display = 'block';
-            document.getElementById('batch_id').value = manualBatch;
-            document.getElementById('planned_qty').value = manualQty;
-            document.getElementById('completed_qty').value = '0';
-            document.getElementById('rejected_qty').value = '0';
-            document.getElementById('rework_qty').value = '0';
-            
-            // Set quantity checked max
-            quantityChecked.max = manualQty;
-            quantityChecked.placeholder = `Max ${manualQty} pieces`;
-            
-            manualDrawingModal.hide();
-        }
-    });
-    
-    // Handle result selection
-    resultSelect.addEventListener('change', function() {
-        rejectionSection.style.display = this.value === 'Reject' ? 'block' : 'none';
-        
-        if (this.value === 'Reject') {
-            document.getElementById('rejection_reason').setAttribute('required', '');
-        } else {
-            document.getElementById('rejection_reason').removeAttribute('required');
-        }
-    });
-    
-    // Form validation
-    document.getElementById('qualityForm').addEventListener('submit', function(e) {
-        const qty = parseInt(quantityChecked.value);
-        const max = parseInt(quantityChecked.max);
-        
-        if (max && qty > max) {
+    if (editButton && updateForm) {
+        editButton.addEventListener('click', function() {
+            updateForm.style.display = 'block';
+        });
+    }
+
+    if (cancelButton && updateForm) {
+        cancelButton.addEventListener('click', function() {
+            updateForm.style.display = 'none';
+        });
+    }
+
+    // Handle action buttons
+    const actionButtons = document.querySelectorAll('.action-button');
+    actionButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
             e.preventDefault();
-            alert(`Cannot check more than ${max} pieces`);
-        }
+            const logId = this.dataset.logId;
+            const actionRow = document.getElementById('action-row-' + logId);
+            if (actionRow) {
+                actionRow.style.display = actionRow.style.display === 'none' ? 'table-row' : 'none';
+            }
+        });
     });
 });
 </script>

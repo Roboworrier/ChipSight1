@@ -1,344 +1,143 @@
-{% extends 'base_template.html' %}
+{% extends "base.html" %}
+
+{% block title %}Digital Twin Dashboard{% endblock %}
+
 {% block content %}
-<!-- 
-Copyright (c) 2025 Diwakar Singh.
-Licensed under MIT for open-source use (see LICENSE) or
-COMPANY_LICENSE.md for proprietary use by Addverb Technologies Ltd.
--->
 <div class="container-fluid mt-4">
-    <!-- Overview Cards -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Total Projects</h5>
-                    <h2 class="mb-0">{{ total_projects }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Completed</h5>
-                    <h2 class="mb-0">{{ completed_projects }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark">
-                <div class="card-body">
-                    <h5 class="card-title">In Progress</h5>
-                    <h2 class="mb-0">{{ in_progress_projects }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-danger text-white">
-                <div class="card-body">
-                    <h5 class="card-title">Delayed</h5>
-                    <h2 class="mb-0">{{ delayed_projects }}</h2>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Digital Twin Dashboard</h2>
+        <small class="text-muted">Last Updated: {{ last_updated_time.strftime('%Y-%m-%d %H:%M:%S UTC') if last_updated_time else 'N/A' }}</small>
+                            </div>
 
-    <!-- Projects Progress -->
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Projects Progress</h5>
-            <input type="text" id="projectSearch" class="form-control form-control-sm w-25" placeholder="Search projects...">
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="projectsTable">
-                    <thead>
-                        <tr>
-                            <th>Project</th>
-                            <th>End Product</th>
-                            <th>Drawing Number</th>
-                            <th>Progress</th>
-                            <th>Setup Time</th>
-                            <th>Cycle Time</th>
-                            <th>Quality</th>
-                            <th>Due Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for project in projects %}
-                            {% for product in project.end_products.values() %}
-                            <tr>
-                                <td>{{ project.code }} - {{ project.name }}</td>
-                                <td>{{ product.name }}</td>
-                                <td>{{ product.drawing_number or product.sap_id }}</td>
-                                <td>
-                                    <div class="progress" style="height: 20px;">
-                                        <div class="progress-bar {% if product.completion_percentage == 100 %}bg-success{% elif product.on_time %}bg-info{% else %}bg-warning{% endif %}"
-                                             role="progressbar"
-                                             style="width: {{ product.completion_percentage }}%">
-                                            {{ product.completion_percentage|round|int }}%
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="badge bg-{{ product.setup_time_status }}">
-                                        {{ product.actual_setup_time|round(1) }}/{{ product.standard_setup_time }} min
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge bg-{{ product.cycle_time_status }}">
-                                        {{ product.actual_cycle_time|round(1) }}/{{ product.standard_cycle_time }} min
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge bg-{{ 'warning' if product.rework_qty > 0 else 'success' }}">
-                                        {{ product.completed_qty }}/{{ product.total_qty }}
-                                        {% if product.rework_qty > 0 %}
-                                        ({{ product.rework_qty }} in rework)
-                                        {% endif %}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge bg-{{ 'success' if product.on_time else 'danger' }}">
-                                        {{ product.completion_date }}
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Time Performance Trends -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Setup Time Trends</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="setupTimeChart"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Cycle Time Trends</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="cycleTimeChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Quality Overview -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">Quality Status</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="qualityChart"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header bg-danger text-white">
-                    <h5 class="mb-0">Rework History</h5>
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Drawing</th>
-                                    <th>Type</th>
-                                    <th>Pieces</th>
-                                    <th>Reason</th>
-                                    <th>Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for rework in rework_history %}
-                                <tr>
-                                    <td>{{ rework.drawing_number }}</td>
-                                    <td>
-                                        <span class="badge bg-{{ 'warning' if rework.type == 'FPI' else 'info' }}">
-                                            {{ rework.type }}
-                                        </span>
-                                    </td>
-                                    <td>{{ rework.quantity }}</td>
-                                    <td>{{ rework.rejection_reason }}</td>
-                                    <td>{{ rework.created_at.strftime('%Y-%m-%d') }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- OEE Metrics -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Overall Equipment Effectiveness (OEE)</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Availability</h6>
-                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.availability >= 85 else 'text-warning' if oee_metrics.availability >= 65 else 'text-danger' }}">
-                                        {{ "%.1f"|format(oee_metrics.availability) }}%
-                                    </h3>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                                 </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-4">
+        {% for machine in machine_data %}
+        {% set machine_id = machine.name|lower|replace(' ', '-') %}
+        {% set card_border_class = 'border-secondary' %}
+        {% set card_header_bg = 'bg-light' %}
+        {% set status_badge_bg = 'bg-secondary' %}
+        {% set status_text = machine.status|title %}
+
+        {% if machine.status == 'breakdown' %}
+            {% set card_border_class = 'border-danger' %}
+            {% set card_header_bg = 'bg-danger text-white' %}
+            {% set status_badge_bg = 'bg-white text-danger' %}
+        {% elif machine.status == 'in_use' %}
+            {% set card_border_class = 'border-success' %}
+            {% set card_header_bg = 'bg-success text-white' %}
+            {% set status_badge_bg = 'bg-white text-success' %}
+            {% set status_text = 'Running' %}
+        {% elif machine.status == 'available' %}
+            {% if machine.operator != 'N/A' and machine.operator != '' %}
+                {# Should ideally be 'in_use' if operator is assigned, but if data says available + operator, treat as ready/assigned #}
+                {% set card_border_class = 'border-primary' %}
+                {% set card_header_bg = 'bg-primary text-white' %}
+                {% set status_badge_bg = 'bg-white text-primary' %}
+                {% set status_text = 'Operator Assigned' %}
+            {% else %}
+                {% set card_border_class = 'border-secondary' %}
+                {% set card_header_bg = 'bg-secondary text-white' %}
+                {% set status_badge_bg = 'bg-white text-secondary' %}
+                {% set status_text = 'Idle' %}
+            {% endif %}
+        {% endif %}
+
+        <div class="col">
+            <div class="card h-100 shadow-sm machine-tile {{ card_border_class }}">
+                <div class="card-header d-flex justify-content-between align-items-center {{ card_header_bg }}" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapse-{{ machine_id }}" aria-expanded="false" aria-controls="collapse-{{ machine_id }}">
+                    <h5 class="card-title mb-0"> <i class="fas fa-server me-2"></i>{{ machine.name }}</h5>
+                    <span class="badge rounded-pill {{ status_badge_bg }}">{{ status_text }}</span>
+                                </div>
+                
+                <div class="collapse" id="collapse-{{ machine_id }}">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h6>Overall Equipment Effectiveness (OEE)</h6>
+                            <div class="progress mb-1" style="height: 20px;">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ machine.oee.overall }}%;" aria-valuenow="{{ machine.oee.overall }}" aria-valuemin="0" aria-valuemax="100">{{ machine.oee.overall|round(1) }}%</div>
+                            </div>
+                            <small class="text-muted d-block">A: {{ machine.oee.availability|round(1) }}% | P: {{ machine.oee.performance|round(1) }}% | Q: {{ machine.oee.quality|round(1) }}%</small>
+                        </div>
+                        
+                        <hr>
+
+                        <p class="card-text mb-1"><strong>Operator:</strong> {{ machine.operator if machine.operator else 'N/A' }}</p>
+                        <p class="card-text mb-1"><strong>Drawing:</strong> {{ machine.drawing if machine.drawing else 'N/A' }}</p>
+                        
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <p class="card-text mb-1"><strong>Planned Qty:</strong> {{ machine.planned }}</p>
+                                <p class="card-text mb-1"><strong>Completed:</strong> {{ machine.completed }}</p>
+                            </div>
+                            <div class="col-6">
+                                <p class="card-text mb-1"><strong>Rejected:</strong> {{ machine.rejected }}</p>
+                                <p class="card-text mb-1"><strong>Rework:</strong> {{ machine.rework }}</p>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Performance</h6>
-                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.performance >= 85 else 'text-warning' if oee_metrics.performance >= 65 else 'text-danger' }}">
-                                        {{ "%.1f"|format(oee_metrics.performance) }}%
-                                    </h3>
-                                </div>
+                         <p class="card-text mt-1"><strong>Quality Status:</strong> 
+                            <span class="badge bg-{{ 'info text-dark' if machine.quality_pending not in ['None', '', 'N/A'] else ('secondary' if machine.quality_pending in ['None', 'N/A'] else 'light text-dark') }}">
+                                {{ machine.quality_pending if machine.quality_pending not in ['None', '', 'N/A'] else 'N/A' }}
+                            </span>
+                        </p>
+
+                        <hr>
+                        <h6>Cycle & Setup Times</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small><strong>Setup Time:</strong></small><br>
+                                Actual: {{ machine.actual_setup_time_display if machine.actual_setup_time_display else 'N/A' }}<br>
+                                Std: {{ "%.1f min"|format(machine.std_setup_time) if machine.std_setup_time else 'N/A' }}
+                            </div>
+                            <div class="col-md-6">
+                                <small><strong>Cycle Time (Avg):</strong></small><br>
+                                Actual: {{ machine.avg_actual_cycle_time_display if machine.avg_actual_cycle_time_display else 'N/A' }}<br>
+                                 Std: {{ "%.2f min/pc"|format(machine.std_cycle_time) if machine.std_cycle_time else 'N/A' }}
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Quality</h6>
-                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.quality >= 85 else 'text-warning' if oee_metrics.quality >= 65 else 'text-danger' }}">
-                                        {{ "%.1f"|format(oee_metrics.quality) }}%
-                                    </h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body text-center">
-                                    <h6>Overall OEE</h6>
-                                    <h3 class="mb-0 {{ 'text-success' if oee_metrics.oee >= 85 else 'text-warning' if oee_metrics.oee >= 65 else 'text-danger' }}">
-                                        {{ "%.1f"|format(oee_metrics.oee) }}%
-                                    </h3>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+
+                    </div> {# End card-body for collapse #}
+                </div> {# End collapse div #}
+                <div class="card-footer text-center">
+                    <button class="btn btn-sm btn-outline-primary w-100" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ machine_id }}" aria-expanded="false" aria-controls="collapse-{{ machine_id }}">
+                        Toggle Details
+                    </button>
                 </div>
             </div>
         </div>
+        {% else %}
+        <div class="col">
+            <p class="text-muted">No machine data available.</p>
+        </div>
+        {% endfor %}
     </div>
 </div>
 
-<script>
-// Search functionality
-document.getElementById('projectSearch').addEventListener('keyup', function() {
-    var searchText = this.value.toLowerCase();
-    var table = document.getElementById('projectsTable');
-    var rows = table.getElementsByTagName('tr');
-
-    for (var i = 1; i < rows.length; i++) {
-        var show = false;
-        var cells = rows[i].getElementsByTagName('td');
-        for (var j = 0; j < cells.length; j++) {
-            if (cells[j].textContent.toLowerCase().indexOf(searchText) > -1) {
-                show = true;
-                break;
-            }
-        }
-        rows[i].style.display = show ? '' : 'none';
+<style>
+    .machine-tile .card-header {
+        /* General header styling if needed, but specific backgrounds are set by status */
+        transition: background-color 0.3s ease;
     }
-});
+    /* Status-specific styles are now primarily handled by dynamic classes in the HTML. */
 
-// Setup Time Chart
-const setupCtx = document.getElementById('setupTimeChart').getContext('2d');
-new Chart(setupCtx, {
-    type: 'line',
-    data: {
-        labels: {{ time_performance_labels|tojson }},
-        datasets: [{
-            label: 'Actual Setup Time',
-            data: {{ setup_time_data|tojson }},
-            borderColor: 'rgba(54, 162, 235, 1)',
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            title: {
-                display: true,
-                text: 'Setup Time Trends (minutes)'
-            }
-        }
+    .card-title {
+        font-weight: 500;
     }
-});
-
-// Cycle Time Chart
-const cycleCtx = document.getElementById('cycleTimeChart').getContext('2d');
-new Chart(cycleCtx, {
-    type: 'line',
-    data: {
-        labels: {{ time_performance_labels|tojson }},
-        datasets: [{
-            label: 'Actual Cycle Time',
-            data: {{ cycle_time_data|tojson }},
-            borderColor: 'rgba(255, 99, 132, 1)',
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            title: {
-                display: true,
-                text: 'Cycle Time Trends (minutes)'
-            }
-        }
+    .card-text strong {
+        color: #495057;
     }
-});
-
-// Quality Chart
-const qualityCtx = document.getElementById('qualityChart').getContext('2d');
-new Chart(qualityCtx, {
-    type: 'doughnut',
-    data: {
-        labels: ['Completed', 'In Progress', 'Rework', 'Pending'],
-        datasets: [{
-            data: {{ quality_data|tojson }},
-            backgroundColor: [
-                'rgba(40, 167, 69, 0.8)',
-                'rgba(23, 162, 184, 0.8)',
-                'rgba(255, 193, 7, 0.8)',
-                'rgba(108, 117, 125, 0.8)'
-            ]
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                position: 'right'
-            }
-        }
+    .progress-bar {
+        font-size: 0.8rem;
+        font-weight: bold;
     }
-});
-
-// Auto-refresh every 30 seconds
-setTimeout(() => {
-    window.location.reload();
-}, 30000);
-</script>
+</style>
 {% endblock %}
