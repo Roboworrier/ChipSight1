@@ -1,0 +1,23 @@
+import os
+import re
+
+template_dir = "templates"  # Assuming your templates are in a 'templates' folder
+pattern = re.compile(r'<a\s+href="{{ url_for\(\'dashboard\'\) }}">Dashboard</a>')
+
+found_matches = []
+
+for root, dirs, files in os.walk(template_dir):
+    for file in files:
+        if file.endswith('.html'):
+            filepath = os.path.join(root, file)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if pattern.search(content):
+                    found_matches.append(filepath)
+
+if found_matches:
+    print("Found in these files:")
+    for match in found_matches:
+        print(f"- {match}")
+else:
+    print("No matches found in any HTML files.")

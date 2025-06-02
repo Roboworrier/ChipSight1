@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - ChipSight{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header Section -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Admin Dashboard</h1>
+        <div class="btn-toolbar mb-2 mb-md-0">
+            <form method="POST" action="{{ url_for('admin_export_logs') }}" class="me-2">
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-download me-1"></i>Export Error Logs
+                </button>
+            </form>
+            <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- System Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Active Users</h6>
+                            <h3 class="mb-0">{{ stats.active_sessions }}/{{ stats.total_users }}</h3>
+                        </div>
+                        <i class="fas fa-users fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Current Active Sessions</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Active Projects</h6>
+                            <h3 class="mb-0">{{ stats.active_projects }}/{{ stats.total_projects }}</h3>
+                        </div>
+                        <i class="fas fa-project-diagram fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Current Active Projects</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Quality Checks</h6>
+                            <h3 class="mb-0">{{ stats.pending_quality_checks }}</h3>
+                        </div>
+                        <i class="fas fa-check-circle fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-dark-50">Pending Quality Checks</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Rework Items</h6>
+                            <h3 class="mb-0">{{ stats.pending_rework }}</h3>
+                        </div>
+                        <i class="fas fa-tools fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Pending Rework Items</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Performance and Error Logs -->
+    <div class="row mb-4">
+        <!-- System Performance -->
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>System Performance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-database me-2 text-primary"></i>
+                                Database Size
+                            </div>
+                            <span class="badge bg-primary rounded-pill">{{ performance_metrics.database_size }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-clock me-2 text-success"></i>
+                                Avg Response Time
+                            </div>
+                            <span class="badge bg-success rounded-pill">{{ performance_metrics.avg_response_time }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-memory me-2 text-warning"></i>
+                                Memory Usage
+                            </div>
+                            <span class="badge bg-warning rounded-pill">{{ performance_metrics.memory_usage }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-microchip me-2 text-info"></i>
+                                CPU Usage
+                            </div>
+                            <span class="badge bg-info rounded-pill">{{ performance_metrics.cpu_usage }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Logs -->
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Recent Error Logs</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Level</th>
+                                    <th>Source</th>
+                                    <th>Message</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in error_logs %}
+                                <tr>
+                                    <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>
+                                        <span class="badge {% if log.level == 'ERROR' %}bg-danger{% elif log.level == 'WARNING' %}bg-warning{% else %}bg-info{% endif %}">
+                                            {{ log.level }}
+                                        </span>
+                                    </td>
+                                    <td>{{ log.source }}</td>
+                                    <td>{{ log.message }}</td>
+                                    <td>
+                                        <form method="POST" action="{{ url_for('admin_resolve_log') }}" class="d-inline">
+                                            <input type="hidden" name="log_id" value="{{ log.id }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-success">
+                                                <i class="fas fa-check me-1"></i>Resolve
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center">No unresolved error logs</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Status and Database Stats -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Machine Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="machineStatusChart" 
+                            data-active-machines="{{ stats.active_machines|default(0) }}"
+                            data-total-machines="{{ stats.total_machines|default(0) }}">
+                    </canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Database Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>Total Machines</div>
+                            <span class="badge bg-primary rounded-pill">{{ stats.total_machines }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>Total Drawings</div>
+                            <span class="badge bg-success rounded-pill">{{ stats.total_drawings }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>Total Quality Checks</div>
+                            <span class="badge bg-info rounded-pill">{{ stats.total_quality_checks }}</span>
+                        </div>
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>Total Rework Items</div>
+                            <span class="badge bg-warning rounded-pill">{{ stats.total_rework_items }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var ctx = document.getElementById('machineStatusChart');
+    if (ctx) {
+        var activeMachines = parseInt(ctx.dataset.activeMachines) || 0;
+        var totalMachines = parseInt(ctx.dataset.totalMachines) || 0;
+        var availableMachines = totalMachines - activeMachines;
+        
+        new Chart(ctx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Active', 'Available', 'Breakdown'],
+                datasets: [{
+                    data: [activeMachines, availableMachines, 0],
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.8)',
+                        'rgba(0, 123, 255, 0.8)',
+                        'rgba(220, 53, 69, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(0, 123, 255, 1)',
+                        'rgba(220, 53, 69, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %} 

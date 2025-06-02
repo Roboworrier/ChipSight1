@@ -19,12 +19,6 @@ from jinja2 import FileSystemLoader
 import sys
 from markupsafe import Markup
 from sqlalchemy import case
-from io import BytesIO
-import logging
-from logging.handlers import RotatingFileHandler
-import traceback
-import shutil
-import random
 
 sys.setrecursionlimit(3000)  # Increase recursion limit if needed
 
@@ -33,102 +27,6 @@ os.environ['FLASK_SKIP_DOTENV'] = '1'
 
 # Initialize Flask app
 app = Flask(__name__)
-
-# Configure logging
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-file_handler = RotatingFileHandler('logs/chipsight.log', maxBytes=1024 * 1024, backupCount=10)
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-))
-file_handler.setLevel(logging.INFO)
-app.logger.addHandler(file_handler)
-app.logger.setLevel(logging.INFO)
-app.logger.info('ChipSight startup')
-
-# Configure backup directory
-BACKUP_DIR = 'backups'
-if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR)
-
-def backup_database():
-    """Create a backup of the database file"""
-    try:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_path = os.path.join(BACKUP_DIR, f'digital_twin_{timestamp}.db')
-        
-        # Only backup if the database file exists
-        if os.path.exists('digital_twin.db'):
-            shutil.copy2('digital_twin.db', backup_path)
-            
-            # Keep only last 7 days of backups
-            for backup_file in os.listdir(BACKUP_DIR):
-                backup_file_path = os.path.join(BACKUP_DIR, backup_file)
-                if os.path.getctime(backup_file_path) < (datetime.now() - timedelta(days=7)).timestamp():
-                    os.remove(backup_file_path)
-            
-            app.logger.info(f'Database backed up to {backup_path}')
-            return True
-    except Exception as e:
-        app.logger.error(f'Database backup failed: {str(e)}')
-        return False
-
-def log_error(error_type, message, stack_trace=None):
-    """Log error to database and file"""
-    try:
-        error_log = SystemLog(
-            level='ERROR',
-            source=error_type,
-            message=message,
-            stack_trace=stack_trace
-        )
-        db.session.add(error_log)
-        db.session.commit()
-        app.logger.error(f'{error_type}: {message}')
-        if stack_trace:
-            app.logger.error(f'Stack trace: {stack_trace}')
-    except Exception as e:
-        app.logger.error(f'Error logging failed: {str(e)}')
-
-@app.before_request
-def before_request():
-    """Perform actions before each request"""
-    # Create a backup every 6 hours
-    try:
-        last_backup_file = max([f for f in os.listdir(BACKUP_DIR) if f.startswith('digital_twin_')], 
-                             key=lambda x: os.path.getctime(os.path.join(BACKUP_DIR, x)), 
-                             default=None)
-        if last_backup_file:
-            last_backup_time = datetime.fromtimestamp(os.path.getctime(os.path.join(BACKUP_DIR, last_backup_file)))
-            if datetime.now() - last_backup_time > timedelta(hours=6):
-                backup_database()
-        else:
-            backup_database()
-    except Exception as e:
-        app.logger.error(f'Backup check failed: {str(e)}')
-
-@app.errorhandler(404)
-def not_found_error(error):
-    """Handle 404 errors"""
-    log_error('NotFound', f'Page not found: {request.url}')
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors"""
-    db.session.rollback()
-    stack_trace = traceback.format_exc()
-    log_error('InternalServer', str(error), stack_trace)
-    return render_template('errors/500.html'), 500
-
-@app.errorhandler(SQLAlchemyError)
-def database_error(error):
-    """Handle database errors"""
-    db.session.rollback()
-    stack_trace = traceback.format_exc()
-    log_error('Database', str(error), stack_trace)
-    return render_template('errors/500.html'), 500
 
 # Custom Jinja2 filter for nl2br
 def nl2br_filter(value):
@@ -360,49 +258,36 @@ class MachineBreakdownLog(db.Model):
 Machine.breakdown_logs = relationship("MachineBreakdownLog", order_by=MachineBreakdownLog.breakdown_start_time, back_populates="machine_rel")
 OperatorSession.reported_breakdowns = relationship("MachineBreakdownLog", back_populates="operator_session_rel")
 
-class SystemLog(db.Model):
-    __tablename__ = 'system_log'
-    id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-    level = db.Column(db.String(20), nullable=False)  # ERROR, WARNING, INFO
-    source = db.Column(db.String(100), nullable=False)  # Component/module that generated the log
-    message = db.Column(db.Text, nullable=False)
-    stack_trace = db.Column(db.Text, nullable=True)
-    resolved = db.Column(db.Boolean, default=False)
-    resolved_by = db.Column(db.String(100), nullable=True)
-    resolved_at = db.Column(db.DateTime, nullable=True)
-
 # --- Helper Functions ---
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def get_machine_choices():
-    """Returns list of available machines"""
+    # Corrected HASS-2 to HAAS-2 as per user's list
     return [
-        ("Leadwell-1", "Leadwell-1"), 
-        ("Leadwell-2", "Leadwell-2"),
-        ("VMC1", "VMC1"),
-        ("VMC2", "VMC2"),
-        ("VMC3", "VMC3"), 
-        ("VMC4", "VMC4"),
-        ("HAAS-1", "HAAS-1"),
-        ("HAAS-2", "HAAS-2")
+        ("Leadwell-1", "Leadwell-1"), ("Leadwell-2", "Leadwell-2"),
+        ("VMC1", "VMC1"), ("VMC2", "VMC2"), ("VMC3", "VMC3"), ("VMC4", "VMC4"),
+        ("HAAS-1", "HAAS-1"), ("HAAS-2", "HAAS-2")
     ]
 
 def clear_user_session():
-    """Clears all session variables related to user authentication"""
-    keys = [
-        'active_role', 'username', 'user_role',
-        'operator_session_id', 'operator_name',
-        'machine_name', 'current_drawing_id',
-        'current_operator_log_id', 'quality_inspector_name'
+    """Clears all session keys related to user login and roles."""
+    keys_to_clear = [
+        'active_role', 'username', 'user_role', # 'user_role' is old, clearing for safety
+        'operator_session_id', 'operator_name', 'machine_name',
+        'current_drawing_id', 'current_operator_log_id',
+        'current_drawing_number_display', 'fpi_status_for_current_drawing'
     ]
-    for key in keys:
+    for key in keys_to_clear:
         session.pop(key, None)
+    # session.clear() could also be used for a more aggressive clear if needed,
+    # but targeted pop is often safer if some session keys are unrelated to auth.
+    # For now, this list covers all known auth/role/workflow keys.
+    print("DEBUG: All user session keys cleared.")
 
+# Helper function to ensure datetime is UTC aware
 def ensure_utc_aware(dt):
-    """Ensures datetime objects are timezone-aware"""
     if dt and dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
@@ -416,136 +301,22 @@ def add_security_headers(response):
         response.headers['Content-Type'] = 'text/html; charset=utf-8'
     return response
 
-# --- ROUTES ---
+# --- Routes ---
 
 @app.route('/')
 def home():
     return redirect(url_for('login_general'))
 
-# --- ADMIN ---
-@app.route('/admin')
-def admin_dashboard():
-    if session.get('active_role') != 'admin':
-        flash('Access denied. Please login as Admin.', 'danger')
-        return redirect(url_for('login_general'))
-
-    # Add this block to calculate or fetch performance_metrics
-    performance_metrics = {
-        'database_size': os.path.getsize('digital_twin.db') if os.path.exists('digital_twin.db') else 0
-    }
-
-    # System statistics
-    stats = {
-        'total_users': OperatorSession.query.distinct(OperatorSession.operator_name).count(),
-        'active_sessions': OperatorSession.query.filter_by(is_active=True).count(),
-        'total_projects': Project.query.count(),
-        'active_projects': Project.query.filter_by(is_deleted=False).count(),
-        'total_machines': Machine.query.count(),
-        'active_machines': Machine.query.filter_by(status='in_use').count(),
-        'total_drawings': MachineDrawing.query.count(),
-        'total_quality_checks': QualityCheck.query.count(),
-        'pending_quality_checks': OperatorLog.query.filter(
-            OperatorLog.current_status.in_(['cycle_completed_pending_fpi', 'cycle_completed_pending_lpi'])
-        ).count(),
-        'total_rework_items': ReworkQueue.query.count(),
-        'pending_rework': ReworkQueue.query.filter_by(status='pending_manager_approval').count()
-    }
-
-    # Error logs
-    error_logs = SystemLog.query.filter_by(resolved=False).order_by(SystemLog.timestamp.desc()).limit(10).all()
-
-    # Backup status
-    backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith('digital_twin_')],
-                    key=lambda x: os.path.getctime(os.path.join(BACKUP_DIR, x)),
-                    reverse=True)[:5]
-
-    return render_template('admin.html',
-                         stats=stats,
-                         error_logs=error_logs,
-                         backups=backups,
-                         performance_metrics=performance_metrics)  # Pass the new variable
-
-@app.route('/admin/export_logs', methods=['POST'])
-def admin_export_logs():
-    if session.get('active_role') != 'admin':
-        flash('Access denied. Please login as Admin.', 'danger')
-        return redirect(url_for('login_general'))
-
-    logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).all()
-    
-    # Create pandas DataFrame
-    df = pd.DataFrame([{
-        'Timestamp': log.timestamp,
-        'Level': log.level,
-        'Source': log.source,
-        'Message': log.message,
-        'Resolved': 'Yes' if log.resolved else 'No'
-    } for log in logs])
-
-    # Save to BytesIO
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='System Logs', index=False)
-    
-    output.seek(0)
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name=f'system_logs_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
-    )
-
-@app.route('/admin/resolve_log', methods=['POST'])
-def admin_resolve_log():
-    if session.get('active_role') != 'admin':
-        flash('Access denied. Please login as Admin.', 'danger')
-        return redirect(url_for('login_general'))
-
-    log_id = request.form.get('log_id')
-    if log_id:
-        log = SystemLog.query.get(log_id)
-        if log:
-            log.resolved = True
-            log.resolved_by = session.get('username')
-            log.resolved_at = datetime.now(timezone.utc)
-            db.session.commit()
-            flash('Log marked as resolved.', 'success')
-        else:
-            flash('Log not found.', 'danger')
-    return redirect(url_for('admin_dashboard'))
-
-@app.route('/admin/create_backup', methods=['POST'])
-def admin_create_backup():
-    if session.get('active_role') != 'admin':
-        flash('Access denied. Please login as Admin.', 'danger')
-        return redirect(url_for('login_general'))
-
-    if backup_database():
-        flash('Database backup created successfully.', 'success')
-    else:
-        flash('Backup failed. Check logs for details.', 'danger')
-    return redirect(url_for('admin_dashboard'))
-
 # --- AUTHENTICATION & ROLE MANAGEMENT ---
 @app.route('/login', methods=['GET', 'POST'])
 def login_general():
     if request.method == 'POST':
-        clear_user_session()
+        clear_user_session() # Clear any previous session first when POSTing to log in
+
         username = request.form.get('username')
         password = request.form.get('password') 
         
-        # Add this block for admin
-        if username == 'admin' and password == 'adminpass':  # Change this password!
-            session['active_role'] = 'admin'
-            session['username'] = username
-            flash('Admin login successful!', 'success')
-            return redirect(url_for('admin_dashboard'))
-        elif username == 'planthead' and password == 'ph123':
-            session['active_role'] = 'plant_head'
-            session['username'] = username
-            flash('Plant Head login successful!', 'success')
-            return redirect(url_for('plant_head_dashboard'))
-        elif username == 'planner' and password == 'plannerpass':
+        if username == 'planner' and password == 'plannerpass':
             session['active_role'] = 'planner'
             session['username'] = username
             flash('Planner login successful!', 'success')
@@ -563,14 +334,8 @@ def login_general():
             flash('Quality login successful!', 'success')
             print(f"DEBUG: Session after quality login: {dict(session)}")
             return redirect(url_for('quality_dashboard'))
-        elif username == 'plant_head' and password == 'plantpass':
-            session['active_role'] = 'plant_head'
-            session['username'] = username
-            flash('Plant Head login successful!', 'success')
-            print(f"DEBUG: Session after plant head login: {dict(session)}")
-            return redirect(url_for('plant_head_dashboard'))
         else:
-            flash('Invalid credentials.', 'danger')
+            flash('Invalid credentials for Planner, Manager, or Quality.', 'danger')
     else: # GET request - REMOVED clear_user_session() from here
         pass
 
@@ -592,38 +357,9 @@ def planner_dashboard():
         return redirect(url_for('login_general'))
 
     if request.method == 'POST':
-        action = request.form.get('action')
-        
-        if action == 'delete_project':
-            project_id = request.form.get('project_id')
-            if project_id:
-                project = Project.query.get(project_id)
-                if project:
-                    project.is_deleted = True
-                    project.deleted_at = datetime.now(timezone.utc)
-                    db.session.commit()
-                    flash('Project deleted successfully.', 'success')
-                else:
-                    flash('Project not found.', 'danger')
-            return redirect(url_for('planner_dashboard'))
-            
-        elif action == 'delete_end_product':
-            end_product_id = request.form.get('end_product_id')
-            if end_product_id:
-                end_product = EndProduct.query.get(end_product_id)
-                if end_product:
-                    db.session.delete(end_product)
-                    db.session.commit()
-                    flash('End product deleted successfully.', 'success')
-                else:
-                    flash('End product not found.', 'danger')
-            return redirect(url_for('planner_dashboard'))
-            
-        elif 'production_plan_file' in request.files:
-            file = request.files['production_plan_file']
+        file = request.files.get('production_plan_file')
         if file and allowed_file(file.filename):
             try:
-                    # Read the Excel file
                 df = pd.read_excel(file, dtype={
                     'project_code': str,
                     'sap_id': str, 
@@ -631,25 +367,27 @@ def planner_dashboard():
                     'discription': str, 
                     'route': str
                 })
-                print(f"DEBUG: Columns found in Excel (raw): {df.columns.tolist()}")
+                print(f"DEBUG: Columns found in Excel (raw): {df.columns.tolist()}") # For debugging
 
                 # Normalize column names from the DataFrame: convert to lowercase and strip spaces
                 normalized_df_columns = [str(col).lower().strip() for col in df.columns]
-                df.columns = normalized_df_columns
+                df.columns = normalized_df_columns # Apply normalized names back to DataFrame for consistent access
                 print(f"DEBUG: Columns found in Excel (normalized): {normalized_df_columns}")
 
-                # Define required columns in lowercase, matching the user's Excel file
-                required_cols = ['project_code', 'project_name', 'end_product',
-                               'sap_id', 'discription', 'qty', 'route',
-                               'completion_date', 'st', 'ct']
 
-                # Check if all required columns are present
+                # Define required columns in lowercase, matching the user's Excel file
+                required_cols = ['project_code', 'project_name', 'end_product', # Changed from 'end_product_name'
+                                 'sap_id', 'discription',       # Changed from 'description'
+                                 'qty', 'route', 'completion_date', 'st', 'ct']
+                
+                # Check if all normalized required columns are present in the normalized DataFrame columns
                 missing_cols = [col for col in required_cols if col not in normalized_df_columns]
 
                 if missing_cols:
                     flash(f'Excel file missing required columns. Missing: {", ".join(missing_cols)}. Found: {", ".join(normalized_df_columns)}', 'danger')
                 else:
                     for index, row in df.iterrows():
+                        # Access row data using normalized column names
                         project_code = str(row['project_code']).strip()
                         sap_id_val = row['sap_id']
                         if isinstance(sap_id_val, bytes):
@@ -662,17 +400,17 @@ def planner_dashboard():
                             project = Project(
                                 project_code=project_code,
                                 project_name=str(row['project_name']).strip(),
-                                description=str(row.get('discription', '')).strip(),
+                                description=str(row.get('discription', '')).strip(), # Changed from 'description'
                                 route=str(row.get('route', '')).strip()
                             )
                             db.session.add(project)
-                            db.session.flush()
+                            db.session.flush() # Get project.id
 
                         end_product = EndProduct.query.filter_by(sap_id=sap_id_val).first()
                         if not end_product:
                             end_product = EndProduct(
                                 project_id=project.id,
-                                name=str(row['end_product']).strip(),
+                                name=str(row['end_product']).strip(), # Changed from 'end_product_name'
                                 sap_id=sap_id_val,
                                 quantity=int(row['qty']),
                                 completion_date=pd.to_datetime(row['completion_date']).date(),
@@ -680,14 +418,13 @@ def planner_dashboard():
                                 cycle_time_std=float(row['ct'])
                             )
                             db.session.add(end_product)
-                        else:
+                        else: # Update existing EndProduct if SAP ID matches
                             end_product.project_id = project.id 
-                            end_product.name = str(row['end_product']).strip()
-                            end_product.quantity = int(row['qty'])
-                            end_product.completion_date = pd.to_datetime(row['completion_date']).date()
-                            end_product.setup_time_std = float(row['st'])
-                            end_product.cycle_time_std = float(row['ct'])
-                        
+                            end_product.name=str(row['end_product']).strip() # Changed from 'end_product_name'
+                            end_product.quantity=int(row['qty'])
+                            end_product.completion_date=pd.to_datetime(row['completion_date']).date()
+                            end_product.setup_time_std=float(row['st'])
+                            end_product.cycle_time_std=float(row['ct'])
                     db.session.commit()
                     flash('Production plan uploaded successfully!', 'success')
             except Exception as e:
@@ -697,7 +434,6 @@ def planner_dashboard():
             flash('Invalid file type or no file selected. Please upload an .xlsx file.', 'warning')
         return redirect(url_for('planner_dashboard'))
             
-    # Get only active (non-deleted) projects for planner view
     projects = Project.query.filter_by(is_deleted=False).order_by(Project.project_code).all()
     return render_template('planner.html', projects=projects)
 
@@ -753,13 +489,16 @@ def manager_dashboard():
                         drawing_id=rework_item.drawing_id,
                         quantity_scrapped=rework_item.quantity_to_rework,
                         reason=f"Rework rejected by manager. Notes: {manager_notes}",
-                        scrapped_at=datetime.now(timezone.utc)
+                        scrapped_at=datetime.now(timezone.utc),
+                        scrapped_by=session.get('quality_inspector_name'),
+                        operator_log_id=rework_item.source_operator_log_id,
+                        quality_check_id=rework_item.originating_quality_check_id
                     )
                     db.session.add(scrap_record)
                     db.session.commit()
                     flash('Rework request rejected and items marked as scrapped.', 'warning')
-            
-            return redirect(url_for('manager_dashboard'))
+        
+        return redirect(url_for('manager_dashboard'))
 
     # Get all rework queue items
     rework_queue = ReworkQueue.query.order_by(
@@ -784,7 +523,7 @@ def manager_dashboard():
 @app.route('/operator_login', methods=['GET', 'POST'])
 def operator_login():
     if request.method == 'POST':
-        clear_user_session()
+        clear_user_session() # Clear any previous session first when POSTing to log in
 
         operator_name = request.form.get('operator_name', '').strip()
         machine_name = request.form.get('machine_name')
@@ -796,8 +535,8 @@ def operator_login():
             machine = Machine.query.filter_by(name=machine_name).first()
             if not machine:
                 flash(f'Machine {machine_name} not found.', 'danger')
-            else:
-                # End any previous active sessions
+            else: # Machine is found, proceed with login
+                # End any previous active session for this operator or this machine
                 old_sessions = OperatorSession.query.filter(
                     db.or_(
                         OperatorSession.operator_name == operator_name,
@@ -807,10 +546,11 @@ def operator_login():
                 ).all()
                 
                 for old_session in old_sessions:
+                    # Close the session
                     old_session.is_active = False
                     old_session.logout_time = datetime.now(timezone.utc)
                     
-                    # Close any hanging logs
+                    # Close any hanging logs for this session
                     hanging_logs = OperatorLog.query.filter(
                         OperatorLog.operator_session_id == old_session.id,
                         OperatorLog.current_status.notin_(['lpi_completed', 'admin_closed'])
@@ -822,7 +562,6 @@ def operator_login():
                 
                 db.session.commit()
 
-                # Create new session
                 new_op_session = OperatorSession(operator_name=operator_name, machine_id=machine.id, shift=shift)
                 db.session.add(new_op_session)
                 db.session.commit()
@@ -831,23 +570,20 @@ def operator_login():
                 session['operator_session_id'] = new_op_session.id
                 session['operator_name'] = operator_name
                 session['machine_name'] = machine_name 
-
-                # Restore previous session state
-                previous_state = restore_operator_session(operator_name, machine_name)
-                if previous_state:
-                    session['current_drawing_id'] = previous_state['drawing_id']
-                    flash(f'Previous session state restored. Last drawing had {previous_state["completed_quantity"]}/{previous_state["planned_quantity"]} parts completed.', 'info')
                 
                 flash(f'Welcome {operator_name}! Logged in on {machine_name}, Shift {shift}.', 'success')
+                print(f"DEBUG: Session after operator login: {dict(session)}") 
                 
+                # Redirect to specific machine panel based on machine name
                 if machine_name == 'Leadwell-1':
                     return redirect(url_for('operator_panel_leadwell1'))
                 elif machine_name == 'Leadwell-2':
                     return redirect(url_for('operator_panel_leadwell2'))
                 else:
-                    flash('Currently only Leadwell-1 and Leadwell-2 machines are supported.', 'warning')
+                    flash('Currently only Leadwell-1 and Leadwell-2 machines are supported. Please contact your administrator.', 'warning')
                     return redirect(url_for('operator_login'))
     
+    # If GET request, or POST request with missing fields/machine not found, render the login page again.
     return render_template('operator_login.html', machine_choices=get_machine_choices())
 
 @app.route('/operator_logout', methods=['POST'])
@@ -868,16 +604,20 @@ def operator_logout():
 
 @app.route('/operator/leadwell1', methods=['GET', 'POST'])
 def operator_panel_leadwell1():
-    if session.get('active_role') != 'operator' or session.get('machine_name') != 'Leadwell-1':
-        flash('Access denied. Please login as operator for Leadwell-1', 'danger')
+    if 'active_role' not in session or session['active_role'] != 'operator' or session.get('machine_name') != 'Leadwell-1':
+        flash('Access denied. Please login as an operator for Leadwell-1.', 'danger')
         return redirect(url_for('operator_login'))
+    
+    # Reuse the operator_panel logic but with machine-specific customizations
     return operator_panel_common('Leadwell-1', 'operator_leadwell1.html')
 
 @app.route('/operator/leadwell2', methods=['GET', 'POST'])
 def operator_panel_leadwell2():
-    if session.get('active_role') != 'operator' or session.get('machine_name') != 'Leadwell-2':
-        flash('Access denied. Please login as operator for Leadwell-2', 'danger')
+    if 'active_role' not in session or session['active_role'] != 'operator' or session.get('machine_name') != 'Leadwell-2':
+        flash('Access denied. Please login as an operator for Leadwell-2.', 'danger')
         return redirect(url_for('operator_login'))
+    
+    # Reuse the operator_panel logic but with machine-specific customizations
     return operator_panel_common('Leadwell-2', 'operator_leadwell2.html')
 
 def get_redirect_url(machine_name):
@@ -891,55 +631,415 @@ def get_redirect_url(machine_name):
         return url_for('operator_login')
 
 def operator_panel_common(machine_name, template_name):
-    """Shared logic for both operator panels"""
-    current_log = OperatorLog.query.get(session.get('current_operator_log_id'))
-    active_drawing = MachineDrawing.query.get(session.get('current_drawing_id'))
-    operator_session = OperatorSession.query.get(session.get('operator_session_id'))
-    approved_rework = ReworkQueue.query.filter_by(status='manager_approved').all()
+    # Initialize variables used throughout the route
+    current_log_id = session.get('current_operator_log_id')
+    current_op_log = db.session.get(OperatorLog, current_log_id) if current_log_id else None
+    active_drawing_obj = db.session.get(MachineDrawing, session.get('current_drawing_id')) if session.get('current_drawing_id') else None
+    action = request.form.get('action') if request.method == 'POST' else None
     
+    # Get operator session and machine info
+    operator_name = session.get('operator_name')
+    machine_obj = Machine.query.filter_by(name=machine_name).first()
+    operator_session_obj = db.session.get(OperatorSession, session.get('operator_session_id'))
+
+    # Get all active logs for this operator's sessions
+    active_logs = []
+    if operator_session_obj:
+        active_logs = OperatorLog.query.join(OperatorSession).filter(
+            OperatorSession.operator_name == operator_session_obj.operator_name,
+            OperatorLog.current_status.notin_(['lpi_completed', 'admin_closed'])
+        ).order_by(OperatorLog.setup_start_time.desc()).all()
+
+    # Get approved rework items for this machine
+    approved_rework_items = ReworkQueue.query.filter_by(
+        status='manager_approved'
+    ).order_by(ReworkQueue.created_at.desc()).all()
+
     if request.method == 'POST':
-        action = request.form.get('action')
-        
-        if action == 'start_setup' and active_drawing:
+        if action == 'select_drawing_and_start_session':
+            drawing_number = request.form.get('drawing_number_input', '').strip()
+            if not drawing_number:
+                flash('Drawing number is required.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            # Find the drawing
+            drawing = MachineDrawing.query.filter_by(drawing_number=drawing_number).first()
+            if not drawing:
+                flash(f'Drawing {drawing_number} not found.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            # Update session with new drawing
+            session['current_drawing_id'] = drawing.id
+            session['current_drawing_number_display'] = drawing.drawing_number
+            flash(f'Drawing {drawing_number} selected.', 'success')
+            return redirect(get_redirect_url(machine_name))
+
+        if action == 'start_setup':
+            print(f"DEBUG SETUP: Starting setup with session: {dict(session)}")
+            print(f"DEBUG SETUP: active_drawing_obj = {active_drawing_obj}")
+            print(f"DEBUG SETUP: current_op_log = {current_op_log}")
+            print(f"DEBUG SETUP: current_op_log status = {current_op_log.current_status if current_op_log else 'No log'}")
+
+            if not active_drawing_obj:
+                flash('Please select a drawing first.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            if not machine_obj or machine_obj.status == 'breakdown':
+                flash('Machine is not operational. Cannot start setup.', 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            # Check if there's any active production log (not waiting for quality or rework)
+            active_production_log = OperatorLog.query.filter(
+                OperatorLog.operator_session_id == operator_session_obj.id,
+                OperatorLog.current_status.in_(['setup_started', 'setup_done', 'cycle_started', 'cycle_paused', 'fpi_passed_ready_for_cycle'])
+            ).first()
+            
+            if active_production_log:
+                flash('Cannot start setup for new drawing while another drawing is in active production. Please complete or cancel the active production first.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            # At this point, we can start setup because either:
+            # 1. There's no current log
+            # 2. Current log is in a state that allows new setup (completed, closed, or pending)
+            print(f"DEBUG SETUP: Creating new log for setup")
             new_log = OperatorLog(
-                operator_session_id=operator_session.id,
-                drawing_id=active_drawing.id,
-                end_product_sap_id=active_drawing.sap_id,
+                operator_session_id=operator_session_obj.id,
+                drawing_id=active_drawing_obj.id,
+                end_product_sap_id=active_drawing_obj.sap_id,
+                setup_start_time=datetime.now(timezone.utc),
                 current_status='setup_started',
-                setup_start_time=datetime.now(timezone.utc)
+                run_planned_quantity=1  # Default to 1 for FPI
             )
             db.session.add(new_log)
-            db.session.commit()
+            db.session.flush()  # Get the new log's ID
             session['current_operator_log_id'] = new_log.id
-            flash('Setup started successfully', 'success')
-            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
-            
-        elif action == 'setup_done' and current_log:
-            current_log.setup_end_time = datetime.now(timezone.utc)
-            current_log.current_status = 'setup_done'
             db.session.commit()
-            flash('Setup completed', 'success')
-            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
-            
-        elif action == 'start_cycle' and current_log:
-            current_log.current_status = 'cycle_started'
-            current_log.first_cycle_start_time = datetime.now(timezone.utc)
+            flash('Setup started.', 'success')
+
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'start_rework':
+            rework_id = request.form.get('rework_id')
+            if not rework_id:
+                flash('Rework ID is required.', 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            rework_item = ReworkQueue.query.get(rework_id)
+            if not rework_item:
+                flash('Rework item not found.', 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            if rework_item.status != 'manager_approved':
+                flash('This rework item is not approved for processing.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            # Create a new operator log for the rework
+            new_rework_log = OperatorLog(
+                operator_session_id=operator_session_obj.id,
+                drawing_id=rework_item.drawing_id,
+                end_product_sap_id=rework_item.drawing_rel.end_product_rel.sap_id,
+                run_planned_quantity=rework_item.quantity_to_rework,
+                is_rework_task=True,
+                current_status='pending_setup',
+                notes=f"Rework task for ReworkQueue ID: {rework_item.id}. Original rejection reason: {rework_item.rejection_reason}"
+            )
+            db.session.add(new_rework_log)
+            db.session.flush()  # Get the new log's ID
+
+            # Update the rework queue item
+            rework_item.status = 'rework_in_progress'
+            rework_item.assigned_operator_log_id = new_rework_log.id
+
+            # Update session to track the new log
+            session['current_operator_log_id'] = new_rework_log.id
+            session['current_drawing_id'] = rework_item.drawing_id
+            session['current_drawing_number_display'] = rework_item.drawing_rel.drawing_number
+
+            print(f"DEBUG REWORK: Created new rework log ID: {new_rework_log.id}")
+            print(f"DEBUG REWORK: Session after rework start: {dict(session)}")
+
             db.session.commit()
-            flash('Cycle started', 'success')
-            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
-    
-    return render_template(template_name,
-        operator_name=session.get('operator_name'),
+            flash(f'Rework task started for drawing {rework_item.drawing_rel.drawing_number}. Please begin setup.', 'success')
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'cycle_pause':
+            if current_op_log.current_status == 'cycle_started':
+                current_op_log.current_status = 'cycle_paused'
+                db.session.commit()
+                flash('Cycle paused.', 'info')
+            else:
+                flash(f'Cannot pause cycle. Current log status: {current_op_log.current_status}. Ensure cycle is started.', 'warning')
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'close_all_active_logs':
+            if not operator_session_obj:
+                flash('Operator session not found. Please re-login.', 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            # Get all active logs for this operator
+            logs_to_close = OperatorLog.query.join(OperatorSession).filter(
+                OperatorSession.operator_name == operator_session_obj.operator_name,
+                OperatorLog.current_status.notin_(['lpi_completed', 'admin_closed'])
+            ).all()
+
+            if not logs_to_close:
+                flash('No active logs found to close.', 'info')
+                return redirect(get_redirect_url(machine_name))
+
+            closed_count = 0
+            skipped_count = 0
+            for log in logs_to_close:
+                # Skip logs with pending rework or quality checks
+                pending_rework = ReworkQueue.query.filter_by(
+                    source_operator_log_id=log.id,
+                    status='pending_manager_approval'
+                ).first()
+                
+                if pending_rework:
+                    skipped_count += 1
+                    continue
+
+                if log.current_status in ['cycle_completed_pending_fpi', 'cycle_completed_pending_lpi']:
+                    skipped_count += 1
+                    continue
+
+                log.current_status = 'admin_closed'
+                log.notes = (log.notes or '') + f"\nLog auto-closed by operator bulk close action at {datetime.now(timezone.utc)}."
+                closed_count += 1
+
+            if closed_count > 0:
+                # Clear current log from session as it might have been closed
+                session.pop('current_operator_log_id', None)
+                db.session.commit()
+                message = f'{closed_count} logs closed successfully.'
+                if skipped_count > 0:
+                    message += f' {skipped_count} logs skipped due to pending quality checks or rework.'
+                flash(message, 'success')
+            else:
+                if skipped_count > 0:
+                    flash(f'No logs closed. {skipped_count} logs skipped due to pending quality checks or rework.', 'warning')
+                else:
+                    flash('No logs were eligible for closing.', 'info')
+            
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'setup_done':
+            if not current_op_log:
+                flash('No active setup found.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            if current_op_log.current_status != 'setup_started':
+                flash('Cannot complete setup. Current log status is not in setup.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+            current_op_log.setup_end_time = datetime.now(timezone.utc)
+            current_op_log.current_status = 'setup_done'
+            db.session.commit()
+            flash('Setup completed. Ready to start cycle.', 'success')
+            return redirect(get_redirect_url(machine_name))
+
+    # ----- Recalculate FPI Hold Status on every GET and after relevant POST actions -----
+    session.pop('drawing_held_for_fpi', None) # Default to not held, recalculate
+    calculated_fpi_status_for_template = 'no_fpi_issue' # Default for template display
+    blocking_fpi_log_details_for_template = None # Initialize
+
+    if active_drawing_obj:
+        # Check if ANY log for the current drawing is actively holding production due to FPI
+        any_log_for_drawing_is_holding_fpi = OperatorLog.query.filter(
+            OperatorLog.drawing_id == active_drawing_obj.id,
+            OperatorLog.production_hold_fpi == True,
+            OperatorLog.current_status.notin_(['lpi_completed', 'admin_closed']) # Only active holds
+        ).first()
+
+        if any_log_for_drawing_is_holding_fpi:
+            session['drawing_held_for_fpi'] = True
+            if current_op_log and current_op_log.id == any_log_for_drawing_is_holding_fpi.id:
+                calculated_fpi_status_for_template = f'CURRENT LOG HOLDING: Your current Log ID {current_op_log.id} is awaiting FPI or FPI has failed. Please resolve with Quality.'
+            else:
+                blocking_fpi_log_details_for_template = any_log_for_drawing_is_holding_fpi
+                calculated_fpi_status_for_template = f'OTHER LOG HOLDING: Production for this drawing is on hold due to an FPI issue with Log ID {any_log_for_drawing_is_holding_fpi.id}. See details below. Please notify Quality Control.'
+        
+        # Additionally, if the current specific operator log is pending FPI, it implies a hold for THIS log.
+        if current_op_log and current_op_log.drawing_id == active_drawing_obj.id and \
+           current_op_log.current_status == 'cycle_completed_pending_fpi' and not session.get('drawing_held_for_fpi'):
+            session['drawing_held_for_fpi'] = True 
+            calculated_fpi_status_for_template = f'CURRENT LOG PENDING: Your current log (ID: {current_op_log.id}) requires FPI.'
+
+    if request.method == 'POST':
+        if not machine_obj:
+            flash('Machine not found or not selected. Please re-login.', 'danger')
+            return redirect(url_for('operator_login'))
+        if not operator_session_obj:
+            flash('Operator session not found. Please re-login.', 'danger')
+            return redirect(url_for('operator_login'))
+
+        # Get the machine object associated with the current operator session
+        current_machine_for_action = None
+        if operator_session_obj and operator_session_obj.machine_rel:
+            current_machine_for_action = operator_session_obj.machine_rel
+        elif machine_name:
+            current_machine_for_action = Machine.query.filter_by(name=machine_name).first()
+
+        # First check if we have a drawing selected when needed
+        if action not in ['select_drawing_and_start_session', 'report_breakdown', 'mark_machine_healthy'] and not active_drawing_obj:
+            flash('No drawing selected in session. Please select a drawing first.', 'warning')
+            return redirect(get_redirect_url(machine_name))
+
+        # Then check if we have an active log when needed
+        if action not in ['select_drawing_and_start_session', 'start_setup', 'report_breakdown', 'mark_machine_healthy'] and not current_op_log:
+            flash('No active operation log found for the selected drawing. Please start setup.', 'warning')
+            return redirect(get_redirect_url(machine_name))
+
+        # Finally check if the active log matches the selected drawing
+        if current_op_log and active_drawing_obj and current_op_log.drawing_id != active_drawing_obj.id and \
+           action not in ['select_drawing_and_start_session', 'report_breakdown', 'mark_machine_healthy']:
+            flash('Active log does not match selected drawing. Please re-select drawing or cancel current log.', 'danger')
+            return redirect(get_redirect_url(machine_name))
+
+        # Now handle the specific actions
+        if action == 'cycle_start':
+            # Check global FPI hold first for the drawing type
+            if session.get('drawing_held_for_fpi') and calculated_fpi_status_for_template.startswith("OTHER LOG HOLDING"):
+                flash(calculated_fpi_status_for_template, 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            # Then check FPI hold specifically for this log / its FPI status
+            if current_op_log.production_hold_fpi and current_op_log.current_status == 'cycle_completed_pending_fpi':
+                flash(f'Cannot start cycle. Current Log (ID: {current_op_log.id}) is awaiting FPI approval.', 'danger')
+            elif current_op_log.production_hold_fpi and current_op_log.current_status == 'fpi_failed_setup_pending':
+                flash(f'Cannot start cycle. FPI failed for current Log (ID: {current_op_log.id}). Please address setup issues or cancel log.', 'danger')
+            elif current_op_log.current_status in ['setup_done', 'fpi_passed_ready_for_cycle', 'cycle_paused']:
+                current_op_log.current_status = 'cycle_started'
+                if not current_op_log.first_cycle_start_time: 
+                    current_op_log.first_cycle_start_time = datetime.now(timezone.utc)
+                current_op_log.last_cycle_start_time = datetime.now(timezone.utc)
+                db.session.commit()
+                flash(f'Cycle started for part {(current_op_log.run_completed_quantity or 0) + 1}.', 'success')
+            else:
+                flash(f'Cannot start cycle. Current log status: {current_op_log.current_status}. Ensure setup is done and FPI (if applicable) has passed.', 'warning')
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'cycle_complete':
+            if current_op_log.current_status == 'cycle_started':
+                current_op_log.run_completed_quantity = (current_op_log.run_completed_quantity or 0) + 1
+                current_op_log.last_cycle_end_time = datetime.now(timezone.utc) 
+                
+                end_product = active_drawing_obj.end_product_rel # Should exist if setup was started
+                is_fpi_req_for_drawing = end_product.is_first_piece_fpi_required if end_product else True
+                # Only require LPI if quantity is more than 1
+                is_lpi_req_for_drawing = (end_product.is_last_piece_lpi_required and current_op_log.run_planned_quantity > 1) if end_product else False
+
+                print(f"DEBUG CYCLE COMPLETE: Log ID {current_op_log.id}")
+                print(f"DEBUG CYCLE COMPLETE: run_completed_quantity = {current_op_log.run_completed_quantity}")
+                print(f"DEBUG CYCLE COMPLETE: run_planned_quantity = {current_op_log.run_planned_quantity}")
+                print(f"DEBUG CYCLE COMPLETE: is_fpi_req_for_drawing = {is_fpi_req_for_drawing}")
+                print(f"DEBUG CYCLE COMPLETE: is_lpi_req_for_drawing = {is_lpi_req_for_drawing}")
+
+                if current_op_log.run_completed_quantity == 1 and is_fpi_req_for_drawing:
+                    current_op_log.current_status = 'cycle_completed_pending_fpi'
+                    current_op_log.fpi_status = 'pending'
+                    current_op_log.production_hold_fpi = True
+                    flash(f'First part completed. FPI required. Production for THIS LOG is on hold.', 'info')
+                elif current_op_log.run_completed_quantity >= current_op_log.run_planned_quantity and is_lpi_req_for_drawing:
+                    current_op_log.current_status = 'cycle_completed_pending_lpi'
+                    current_op_log.lpi_status = 'pending'
+                    flash(f'Planned quantity ({current_op_log.run_planned_quantity}) reached. LPI required.', 'info')
+                else:
+                    # If quantity is 1 and FPI passed, or if LPI not required, mark as completed
+                    if current_op_log.run_completed_quantity >= current_op_log.run_planned_quantity:
+                        current_op_log.current_status = 'lpi_completed'
+                        flash(f'All parts completed. No LPI required for single piece.', 'success')
+                    else:
+                        current_op_log.current_status = 'fpi_passed_ready_for_cycle'
+                        flash(f'Part {current_op_log.run_completed_quantity} of {current_op_log.run_planned_quantity} completed. Ready for next cycle.', 'success')
+                    
+                    db.session.commit()
+                return redirect(get_redirect_url(machine_name))
+            else:
+                flash(f'Cannot complete cycle. Current log status: {current_op_log.current_status}. Ensure cycle is started.', 'warning')
+                return redirect(get_redirect_url(machine_name))
+
+        elif action == 'cycle_pause':
+            if current_op_log.current_status == 'cycle_started':
+                current_op_log.current_status = 'cycle_paused'
+                db.session.commit()
+                flash('Cycle paused.', 'info')
+            else:
+                flash(f'Cannot pause cycle. Current log status: {current_op_log.current_status}. Ensure cycle is started.', 'warning')
+            return redirect(get_redirect_url(machine_name))
+
+        elif action == 'close_all_active_logs':
+            if not operator_session_obj:
+                flash('Operator session not found. Please re-login.', 'danger')
+                return redirect(get_redirect_url(machine_name))
+
+            # Get all active logs for this operator
+            logs_to_close = OperatorLog.query.join(OperatorSession).filter(
+                OperatorSession.operator_name == operator_session_obj.operator_name,
+                OperatorLog.current_status.notin_(['lpi_completed', 'admin_closed'])
+            ).all()
+
+            if not logs_to_close:
+                flash('No active logs found to close.', 'info')
+                return redirect(get_redirect_url(machine_name))
+
+            closed_count = 0
+            skipped_count = 0
+            for log in logs_to_close:
+                # Skip logs with pending rework or quality checks
+                pending_rework = ReworkQueue.query.filter_by(
+                    source_operator_log_id=log.id,
+                    status='pending_manager_approval'
+                ).first()
+                
+                if pending_rework:
+                    skipped_count += 1
+                    continue
+
+                if log.current_status in ['cycle_completed_pending_fpi', 'cycle_completed_pending_lpi']:
+                    skipped_count += 1
+                    continue
+
+                log.current_status = 'admin_closed'
+                log.notes = (log.notes or '') + f"\nLog auto-closed by operator bulk close action at {datetime.now(timezone.utc)}."
+                closed_count += 1
+
+            if closed_count > 0:
+                # Clear current log from session as it might have been closed
+                session.pop('current_operator_log_id', None)
+                db.session.commit()
+                message = f'{closed_count} logs closed successfully.'
+                if skipped_count > 0:
+                    message += f' {skipped_count} logs skipped due to pending quality checks or rework.'
+                flash(message, 'success')
+            else:
+                if skipped_count > 0:
+                    flash(f'No logs closed. {skipped_count} logs skipped due to pending quality checks or rework.', 'warning')
+                else:
+                    flash('No logs were eligible for closing.', 'info')
+            
+            return redirect(get_redirect_url(machine_name))
+
+    # Prepare data for template
+    return render_template(
+        template_name,
+        operator_name=operator_name,
         machine_name=machine_name,
-        current_log=current_log,
-        active_drawing=active_drawing,
-        approved_rework=approved_rework,
-        now=datetime.now(timezone.utc)
+        current_machine_obj=machine_obj,  # Add this line to pass machine object
+        active_drawing=active_drawing_obj,
+        current_log=current_op_log,
+        active_logs=active_logs,
+        approved_rework_items=approved_rework_items,
+        fpi_status=calculated_fpi_status_for_template,
+        blocking_fpi_log=blocking_fpi_log_details_for_template,
+        drawing_number_input=session.get('operator_drawing_number_input', ''),
+        is_drawing_globally_held_for_fpi=session.get('drawing_held_for_fpi', False)
     )
 
 # --- QUALITY ---
 @app.route('/quality', methods=['GET', 'POST'])
 def quality_dashboard():
+    print(f"DEBUG: Session at start of /quality: {dict(session)}") 
     if session.get('active_role') != 'quality':
         flash('Access denied. Please login as Quality Inspector.', 'danger')
         return redirect(url_for('login_general'))
@@ -951,11 +1051,6 @@ def quality_dashboard():
             inspector_name = request.form.get('inspector_name', '').strip()
             if inspector_name:
                 session['quality_inspector_name'] = inspector_name
-                # Restore previous quality session state
-                previous_state = restore_quality_session(inspector_name)
-                if previous_state and previous_state['recent_checks']:
-                    recent_checks_info = previous_state['recent_checks']
-                    flash(f'Welcome back! You have performed {len(recent_checks_info)} recent quality checks.', 'info')
                 flash('Inspector name set successfully.', 'success')
             else:
                 flash('Inspector name cannot be empty.', 'warning')
@@ -1385,8 +1480,8 @@ def digital_twin_dashboard():
 
 @app.route('/machine_report', methods=['GET'])
 def machine_report():
-    if 'active_role' not in session or session['active_role'] not in ['manager', 'planner', 'plant_head']:
-        flash('Access denied. Only managers, planners, and plant heads can access reports.', 'danger')
+    if 'active_role' not in session or session['active_role'] not in ['manager', 'planner']:
+        flash('Access denied. Only managers and planners can access reports.', 'danger')
         return redirect(url_for('login_general'))
 
     # Get date range from query parameters or default to today
@@ -1485,8 +1580,8 @@ def machine_report():
                 'quality': round(quality, 2),
                 'oee': round(oee, 2),
                 'status': log.current_status,
-                'quality_status': "Pending FPI" if log.current_status == 'cycle_completed_pending_fpi' \
-                                else "Pending LPI" if log.current_status == 'cycle_completed_pending_lpi' \
+                'quality_status': "Pending FPI" if log.current_status == 'cycle_completed_pending_fpi' 
+                                else "Pending LPI" if log.current_status == 'cycle_completed_pending_lpi' 
                                 else "N/A",
                 'reason': '',  # Add if you track specific reasons
                 'machine_power': 'ON' if log.current_status not in ['admin_closed'] else 'OFF',
@@ -1510,111 +1605,18 @@ def setup_database():
             db.session.add(Machine(name=machine_name))
         db.session.commit()
         
-def restore_operator_session(operator_name, machine_name):
-    """Restore operator's previous session state"""
-    try:
-        # Get the most recent active session for this operator on this machine
-        last_session = OperatorSession.query.filter_by(
-            operator_name=operator_name,
-            machine_id=Machine.query.filter_by(name=machine_name).first().id
-        ).order_by(OperatorSession.login_time.desc()).first()
-
-        if last_session:
-            # Get the most recent active log
-            last_log = OperatorLog.query.filter_by(
-                operator_session_id=last_session.id
-            ).order_by(OperatorLog.created_at.desc()).first()
-
-            if last_log:
-                return {
-                    'drawing_id': last_log.drawing_id,
-                    'current_status': last_log.current_status,
-                    'completed_quantity': last_log.run_completed_quantity,
-                    'planned_quantity': last_log.run_planned_quantity
-                }
-    except Exception as e:
-        app.logger.error(f'Error restoring operator session: {str(e)}')
-    return None
-
-def restore_quality_session(inspector_name):
-    """Restore quality inspector's previous session state"""
-    try:
-        # Get recent quality checks by this inspector
-        recent_checks = QualityCheck.query.filter_by(
-            inspector_name=inspector_name
-        ).order_by(QualityCheck.timestamp.desc()).limit(5).all()
-
-        return {
-            'recent_checks': [
-                {
-                    'drawing_number': check.operator_log_rel.drawing_rel.drawing_number,
-                    'check_type': check.check_type,
-                    'result': check.result,
-                    'timestamp': check.timestamp
-                } for check in recent_checks
-            ] if recent_checks else []
-        }
-    except Exception as e:
-        app.logger.error(f'Error restoring quality session: {str(e)}')
-    return None
-
-@app.route('/plant_head')
-def plant_head_dashboard():
-    if session.get('active_role') != 'plant_head':
-        flash('Access denied. Please login as Plant Head.', 'danger')
-        return redirect(url_for('login_general'))
-
-    try:
-        # Get all machines with their OEE values
-        machines = Machine.query.options(
-            db.joinedload(Machine.operator_sessions)
-               .joinedload(OperatorSession.operator_logs)
-        ).all()
-
-        # Calculate metrics
-        total_oee = sum(machine.oee or 0 for machine in machines)
-        average_oee = total_oee / len(machines) if machines else 0
-        active_machines_count = sum(1 for m in machines if m.status == 'in_use')
-        machine_utilization = round((active_machines_count / len(machines)) * 100) if machines else 0
-
-        # Get today's date (UTC)
-        today = datetime.now(timezone.utc).date()
-        
-        # Production stats
-        todays_production_count = db.session.query(OperatorLog).filter(
-            OperatorLog.setup_start_time >= today
-        ).count()
-        
-        # Quality stats
-        pending_quality_checks = QualityCheck.query.filter_by(result='pending').count()
-        rework_count = ReworkQueue.query.filter_by(status='pending_manager_approval').count()
-
-        # Prepare quality metrics for chart
-        quality_metrics = {
-            'labels': [m.name for m in machines],
-            'fpy_data': [m.first_pass_yield or 0 for m in machines],  # Assuming Machine model has this field
-            'rework_data': [m.rework_rate or 0 for m in machines]     # Assuming Machine model has this field
-        }
-
-        return render_template('plant_head.html',
-            average_oee=average_oee,
-            active_machines_count=active_machines_count,
-            total_machines_count=len(machines),
-            machine_utilization=machine_utilization,
-            todays_production_count=todays_production_count,
-            todays_target=100,  # Replace with dynamic calculation
-            pending_quality_checks=pending_quality_checks,
-            rework_count=rework_count,
-            todays_projects=[],  # Replace with actual projects query
-            quality_alerts=[],   # Replace with actual alerts query
-            quality_metrics=quality_metrics,
-            machines=machines
-        )
-
-    except Exception as e:
-        app.logger.error(f"Error in plant_head_dashboard: {str(e)}")
-        flash('Error loading dashboard data', 'danger')
-        return redirect(url_for('login_general'))
-
 if __name__ == '__main__':
-    app.run(debug=True)
+    with app.app_context():
+        # Call the setup logic directly or inline it
+        # Inlining the logic from setup_database():
+        # db.drop_all() # Use with caution - for development reset only
+        db.create_all()
+        
+        # Pre-populate machines if they don't exist
+        for machine_name, _ in get_machine_choices():
+            if not Machine.query.filter_by(name=machine_name).first():
+                db.session.add(Machine(name=machine_name))
+        db.session.commit()
+        print("Database tables created and machines pre-populated within app context.")
+
+    app.run(debug=True, host='0.0.0.0', port=5000)

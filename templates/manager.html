@@ -19,6 +19,24 @@
         </div>
     </div>
 
+    <!-- Excel Upload Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Upload Production Plan</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('manager_dashboard') }}" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="production_plan_file" class="form-label">Select Production Plan (.xlsx file)</label>
+                    <input class="form-control" type="file" id="production_plan_file" name="production_plan_file" accept=".xlsx" required>
+                </div>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-upload me-2"></i>Upload Plan
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- Rework Approval Section -->
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
@@ -69,10 +87,10 @@
         </div>
     </div>
 
-    <!-- Production Overview Section -->
-    <div class="card">
+    <!-- Active Projects Section -->
+    <div class="card mb-4">
         <div class="card-header bg-info text-white">
-            <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Production Overview</h5>
+            <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Active Projects</h5>
         </div>
         <div class="card-body">
             {% if projects %}
@@ -121,8 +139,73 @@
                     </table>
                 </div>
             {% else %}
-                <p class="text-center text-muted">No projects available.</p>
+                <p class="text-center text-muted">No active projects available.</p>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Deleted Projects Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="fas fa-trash-alt me-2"></i>Deleted Projects</h5>
+        </div>
+        <div class="card-body">
+            {% if deleted_projects %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Project Code</th>
+                                <th>Project Name</th>
+                                <th>Description</th>
+                                <th>Route</th>
+                                <th>Deleted At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for project in deleted_projects %}
+                            <tr>
+                                <td>{{ project.project_code }}</td>
+                                <td>{{ project.project_name }}</td>
+                                <td>{{ project.description | nl2br }}</td>
+                                <td>{{ project.route }}</td>
+                                <td>{{ project.deleted_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('manager_dashboard') }}" class="d-inline">
+                                        <input type="hidden" name="action" value="restore_project">
+                                        <input type="hidden" name="project_id" value="{{ project.id }}">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="fas fa-undo me-1"></i>Restore
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-center text-muted">No deleted projects available.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5>Upload Drawing Sheet</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data" action="{{ url_for('manager_dashboard') }}">
+                <div class="mb-3">
+                    <label for="drawing_sheet_file" class="form-label">Select Drawing Sheet (Excel)</label>
+                    <input class="form-control" type="file" id="drawing_sheet_file" name="drawing_sheet_file" accept=".xlsx" required>
+                    <div class="form-text">File must contain 'drawing_number' and 'sap_id' columns</div>
+                </div>
+                <input type="hidden" name="action" value="upload_drawing_sheet">
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </form>
         </div>
     </div>
 </div>

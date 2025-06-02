@@ -470,7 +470,34 @@
                 opacity: 0.5;
             }
         }
+
+        .plant-head-nav {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .plant-head-nav .btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        
+        .plant-head-nav .btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .plant-head-nav .btn i {
+            font-size: 1.5rem;
+        }
     </style>
+    {% block head %}{% endblock %}
 </head>
 <body>
     <div id="wrapper">
@@ -493,48 +520,37 @@
                 </div>
             </div>
             <div class="list-group list-group-flush">
-                <a href="{{ url_for('login_general') }}" class="list-group-item list-group-item-action bg-dark text-white"><i class="fas fa-sign-in-alt me-2"></i>Login Select</a>
-                
-                {% if session.active_role == 'planner' %}
-                <a href="{{ url_for('planner_dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'planner_dashboard' %}active{% endif %}"><i class="fas fa-calendar-alt me-2"></i>Planner</a>
-                {% endif %}
+                {% if session.get('active_role') == 'planner' %}
+    <a href="{{ url_for('planner_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'manager' %}
+    <a href="{{ url_for('manager_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'quality' %}
+    <a href="{{ url_for('quality_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'operator' %}
+    <a href="{{ url_for('operator_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'plant_head' %}
+    <a href="{{ url_for('plant_head_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% elif session.get('active_role') == 'admin' %}
+    <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+{% endif %}
 
-                {% if session.active_role == 'manager' %}
-                <a href="{{ url_for('manager_dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'manager_dashboard' %}active{% endif %}"><i class="fas fa-tasks me-2"></i>Manager</a>
-                {% endif %}
-
-                {% if session.active_role == 'operator' %}
-                    {% if session.machine_name == 'Leadwell-1' %}
-                        <a href="{{ url_for('operator_panel_leadwell1') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'operator_panel_leadwell1' %}active{% endif %}"><i class="fas fa-hard-hat me-2"></i>Leadwell-1 Panel</a>
-                    {% elif session.machine_name == 'Leadwell-2' %}
-                        <a href="{{ url_for('operator_panel_leadwell2') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'operator_panel_leadwell2' %}active{% endif %}"><i class="fas fa-hard-hat me-2"></i>Leadwell-2 Panel</a>
-                    {% endif %}
-                {% endif %}
-
-                {% if session.active_role == 'quality' %}
-                <a href="{{ url_for('quality_dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'quality_dashboard' %}active{% endif %}"><i class="fas fa-check-circle me-2"></i>Quality</a>
-                {% endif %}
-
-                {# New Digital Twin Link - visible to planner, manager, quality #}
-                {% if session.active_role in ['planner', 'manager', 'quality'] %}
-                <a href="{{ url_for('digital_twin_dashboard') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'digital_twin_dashboard' %}active{% endif %}"><i class="fas fa-cogs me-2"></i>Digital Twin</a>
-                {% endif %}
-
-                {# DPR Link - visible to planner and manager #}
-                {% if session.active_role in ['planner', 'manager'] %}
-                <a href="{{ url_for('machine_report') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'machine_report' %}active{% endif %}">
-                    <i class="fas fa-chart-line me-2"></i>Daily Production Report
-                </a>
-                {% endif %}
-
-                {# General Logout - shown if any role is active #}
-                {% if session.active_role %}
-                <form action="{{ url_for('logout_general') }}" method="POST" style="display: contents;">
+                <form action="{{ url_for('login_general') }}" method="POST" style="display: contents;">
                     <button type="submit" class="list-group-item list-group-item-action bg-dark text-white logout-button">
                         <i class="fas fa-sign-out-alt"></i>Logout {{ session.username }}
                     </button>
                 </form>
-                {% endif %}
             </div>
         </div>
 
@@ -624,5 +640,14 @@
 
     <!-- Additional Scripts -->
     {% block scripts %}{% endblock %}
+
+    <!-- Plant Head Navigation Button (always show if user is plant head) -->
+    {% if session.get('active_role') == 'plant_head' %}
+    <div class="plant-head-nav">
+        <a href="{{ url_for('plant_head_dashboard') }}" class="btn btn-primary" title="Go to Plant Head Dashboard">
+            <i class="fas fa-industry"></i>
+        </a>
+    </div>
+    {% endif %}
 </body>
 </html> 
