@@ -6,6 +6,76 @@
 <div class="container-fluid">
     <h2 class="mt-4 mb-4 section-title">Planner Dashboard</h2>
 
+    <!-- Digital Twin Summary Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-network-wired me-2"></i>Production & Quality Summary</span>
+                    <a href="{{ digital_twin_url }}" class="btn btn-light btn-sm"><i class="fas fa-eye me-1"></i>View Full Digital Twin</a>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Production Summary</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>End Product</th><th>SAP ID</th><th>Planned</th><th>Completed</th><th>Rejected</th><th>Rework</th></tr></thead>
+                                    <tbody>
+                                        {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
+                                        <tr><td>{{ name }}</td><td>{{ sap_id }}</td><td>{{ planned }}</td><td>{{ completed or 0 }}</td><td>{{ rejected or 0 }}</td><td>{{ rework or 0 }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Quality Checks</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Type</th><th>Result</th><th>Inspector</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for qc in recent_quality_checks %}
+                                        <tr><td>{{ qc.check_type }}</td><td>{{ qc.result|title }}</td><td>{{ qc.inspector_name }}</td><td>{{ qc.timestamp.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Rework</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Status</th><th>Reason</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for rw in recent_rework %}
+                                        <tr><td>{{ rw.drawing_rel.drawing_number if rw.drawing_rel else 'N/A' }}</td><td>{{ rw.quantity_to_rework }}</td><td>{{ rw.status|replace('_',' ')|title }}</td><td>{{ rw.rejection_reason }}</td><td>{{ rw.created_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Scrap/Rejected</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Reason</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for sc in recent_scrap %}
+                                        <tr><td>{{ sc.drawing_rel.drawing_number if sc.drawing_rel else 'N/A' }}</td><td>{{ sc.quantity_scrapped }}</td><td>{{ sc.reason }}</td><td>{{ sc.scrapped_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card mb-4">
         <div class="card-header">
             <i class="fas fa-file-excel me-1"></i>

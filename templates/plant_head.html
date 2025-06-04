@@ -2,26 +2,15 @@
 
 {% block title %}Plant Head Dashboard - ChipSight{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/plant_head.css') }}">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
-    <!-- Header Section -->
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">Plant Head Dashboard</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
-            <div class="btn-group me-2">
-                <a href="{{ url_for('digital_twin_dashboard') }}" class="btn btn-sm btn-outline-primary">
+            <a href="{{ digital_twin_url }}" class="btn btn-sm btn-outline-primary">
                     <i class="fas fa-industry me-1"></i>Digital Twin
                 </a>
-                <a href="{{ url_for('machine_report') }}" class="btn btn-sm btn-outline-success">
-                    <i class="fas fa-chart-line me-1"></i>Live DPR
-                </a>
-            </div>
-            <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline">
+            <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline ms-2">
                 <button type="submit" class="btn btn-sm btn-outline-danger">
                     <i class="fas fa-sign-out-alt me-1"></i>Logout
                 </button>
@@ -29,238 +18,104 @@
         </div>
     </div>
 
-    <!-- Quick Stats Row -->
+    <!-- Simple Quick Stats Row -->
     <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card bg-primary text-white h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-2">Active Machines</h6>
-                            <h3 class="mb-0">{{ active_machines_count }}/{{ total_machines_count }}</h3>
-                        </div>
-                        <i class="fas fa-cogs fa-2x opacity-50"></i>
-                    </div>
-                    <small class="text-white-50">{{ machine_utilization }}% Utilization</small>
-                </div>
+        <div class="col-6 col-md-3 mb-2">
+            <div class="border rounded p-3 text-center bg-light">
+                <div class="fw-bold">Active Machines</div>
+                <div class="display-6">{{ active_machines_count }}/{{ total_machines_count }}</div>
+                <div class="small text-muted">Utilization: {{ machine_utilization }}%</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-success text-white h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-2">Today's Production</h6>
-                            <h3 class="mb-0">{{ todays_production_count }}</h3>
-                        </div>
-                        <i class="fas fa-boxes fa-2x opacity-50"></i>
-                    </div>
-                    <small class="text-white-50">Target: {{ todays_target }}</small>
-                </div>
+        <div class="col-6 col-md-3 mb-2">
+            <div class="border rounded p-3 text-center bg-light">
+                <div class="fw-bold">Today's Production</div>
+                <div class="display-6">{{ todays_production_count }}</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-2">Quality Issues</h6>
-                            <h3 class="mb-0">{{ pending_quality_checks }}</h3>
-                        </div>
-                        <i class="fas fa-exclamation-triangle fa-2x opacity-50"></i>
-                    </div>
-                    <small class="text-dark-50">{{ rework_count }} Items in Rework</small>
-                </div>
+        <div class="col-6 col-md-3 mb-2">
+            <div class="border rounded p-3 text-center bg-light">
+                <div class="fw-bold">Quality Issues</div>
+                <div class="display-6">{{ pending_quality_checks }}</div>
+                <div class="small text-muted">Rework: {{ rework_count }}</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-info text-white h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-2">Average OEE</h6>
-                            <h3 class="mb-0">{{ "%.1f"|format(average_oee|default(0)) }}%</h3>
-                        </div>
-                        <i class="fas fa-chart-pie fa-2x opacity-50"></i>
-                    </div>
-                    <small class="text-white-50">Target: 85%</small>
-                </div>
+        <div class="col-6 col-md-3 mb-2">
+            <div class="border rounded p-3 text-center bg-light">
+                <div class="fw-bold">Average OEE</div>
+                <div class="display-6">{{ "%.1f"|format(average_oee|default(0)) }}%</div>
             </div>
         </div>
     </div>
 
-    <!-- Machine Status and Production Progress -->
+    <!-- Production & Quality Summary Tables -->
     <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-industry me-2"></i>Machine Status Overview</h5>
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-network-wired me-2"></i>Production & Quality Summary</span>
+                    <a href="{{ digital_twin_url }}" class="btn btn-light btn-sm"><i class="fas fa-eye me-1"></i>View Full Digital Twin</a>
                 </div>
                 <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Production Summary</h6>
                     <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Machine</th>
-                                    <th>Status</th>
-                                    <th>Current Job</th>
-                                    <th>Operator</th>
-                                    <th>Progress</th>
-                                    <th>OEE</th>
-                                </tr>
-                            </thead>
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>End Product</th><th>SAP ID</th><th>Planned</th><th>Completed</th><th>Rejected</th><th>Rework</th></tr></thead>
                             <tbody>
-                                {% for machine in machines %}
-                                <tr>
-                                    <td>{{ machine.name }}</td>
-                                    <td>
-                                        <span class="badge {% if machine.status == 'available' %}bg-success{% elif machine.status == 'in_use' %}bg-primary{% else %}bg-danger{% endif %}">
-                                            {{ machine.status|title }}
-                                        </span>
-                                    </td>
-                                    <td>{{ machine.current_job or 'N/A' }}</td>
-                                    <td>{{ machine.operator or 'N/A' }}</td>
-                                    <td>
-                                        {% set progress = machine.progress|default(0) %}
-                                        <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar" 
-                                                 role="progressbar" 
-                                                 style="width: {{ progress }}%"
-                                                 aria-valuenow="{{ progress }}"
-                                                 aria-valuemin="0"
-                                                 aria-valuemax="100">
-                                                {{ progress }}%
+                                        {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
+                                        <tr><td>{{ name }}</td><td>{{ sap_id }}</td><td>{{ planned }}</td><td>{{ completed or 0 }}</td><td>{{ rejected or 0 }}</td><td>{{ rework or 0 }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                                             </div>
                                         </div>
-                                    </td>
-                                    <td>{{ "%.1f"|format(machine.oee) }}%</td>
-                                </tr>
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Quality Checks</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Type</th><th>Result</th><th>Inspector</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for qc in recent_quality_checks %}
+                                        <tr><td>{{ qc.check_type }}</td><td>{{ qc.result|title }}</td><td>{{ qc.inspector_name }}</td><td>{{ qc.timestamp.strftime('%Y-%m-%d %H:%M') }}</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Rework</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Status</th><th>Reason</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for rw in recent_rework %}
+                                        <tr><td>{{ rw.drawing_rel.drawing_number if rw.drawing_rel else 'N/A' }}</td><td>{{ rw.quantity_to_rework }}</td><td>{{ rw.status|replace('_',' ')|title }}</td><td>{{ rw.rejection_reason }}</td><td>{{ rw.created_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
         </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Today's Production Plan</h5>
                 </div>
-                <div class="card-body">
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Scrap/Rejected</h6>
                     <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Project</th>
-                                    <th>Target</th>
-                                    <th>Completed</th>
-                                </tr>
-                            </thead>
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Reason</th><th>Time</th></tr></thead>
                             <tbody>
-                                {% for project in todays_projects %}
-                                <tr>
-                                    <td>{{ project.name }}</td>
-                                    <td>{{ project.target }}</td>
-                                    <td>
-                                        <span class="badge {% if project.completed >= project.target %}bg-success{% else %}bg-warning{% endif %}">
-                                            {{ project.completed }}
-                                        </span>
-                                    </td>
-                                </tr>
+                                        {% for sc in recent_scrap %}
+                                        <tr><td>{{ sc.drawing_rel.drawing_number if sc.drawing_rel else 'N/A' }}</td><td>{{ sc.quantity_scrapped }}</td><td>{{ sc.reason }}</td><td>{{ sc.scrapped_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Quality and Alerts Section -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-exclamation-circle me-2"></i>Quality Alerts</h5>
-                </div>
-                <div class="card-body">
-                    {% if quality_alerts %}
-                    <div class="list-group">
-                        {% for alert in quality_alerts %}
-                        <div class="list-group-item list-group-item-action">
-                            <div class="d-flex w-100 justify-content-between">
-                                <h6 class="mb-1">{{ alert.drawing_number }}</h6>
-                                <small>{{ alert.time_ago }}</small>
-                            </div>
-                            <p class="mb-1">{{ alert.message }}</p>
-                            <small class="text-muted">Machine: {{ alert.machine }} | Operator: {{ alert.operator }}</small>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <p class="text-center text-muted">No quality alerts at this time.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Quality Metrics</h5>
-                </div>
-                <div class="card-body">
-                    <canvas id="qualityChart" width="400" height="300"></canvas>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
-{% endblock %}
-
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Only initialize chart if quality metrics exist
-    {% if quality_metrics %}
-    var ctx = document.getElementById('qualityChart').getContext('2d');
-    try {
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: {{ quality_metrics.labels|tojson|safe }},
-                datasets: [
-                    {
-                        label: 'First Pass Yield',
-                        data: {{ quality_metrics.fpy_data|tojson|safe }},
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Rework Rate',
-                        data: {{ quality_metrics.rework_data|tojson|safe }},
-                        backgroundColor: 'rgba(255, 206, 86, 0.5)',
-                        borderColor: 'rgba(255, 206, 86, 1)',
-                        borderWidth: 1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100
-                    }
-                }
-            }
-        });
-    } catch (e) {
-        console.error('Chart initialization failed:', e);
-    }
-    {% endif %}
-});
-</script>
 {% endblock %} 

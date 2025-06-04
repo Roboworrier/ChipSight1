@@ -19,19 +19,89 @@
         </div>
     </div>
 
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-network-wired me-2"></i>Production & Quality Summary</span>
+                    <a href="{{ digital_twin_url }}" class="btn btn-light btn-sm"><i class="fas fa-eye me-1"></i>View Full Digital Twin</a>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Production Summary</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>End Product</th><th>SAP ID</th><th>Planned</th><th>Completed</th><th>Rejected</th><th>Rework</th></tr></thead>
+                                    <tbody>
+                                        {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
+                                        <tr><td>{{ name }}</td><td>{{ sap_id }}</td><td>{{ planned }}</td><td>{{ completed or 0 }}</td><td>{{ rejected or 0 }}</td><td>{{ rework or 0 }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Quality Checks</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Type</th><th>Result</th><th>Inspector</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for qc in recent_quality_checks %}
+                                        <tr><td>{{ qc.check_type }}</td><td>{{ qc.result|title }}</td><td>{{ qc.inspector_name }}</td><td>{{ qc.timestamp.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Rework</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Status</th><th>Reason</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for rw in recent_rework %}
+                                        <tr><td>{{ rw.drawing_rel.drawing_number if rw.drawing_rel else 'N/A' }}</td><td>{{ rw.quantity_to_rework }}</td><td>{{ rw.status|replace('_',' ')|title }}</td><td>{{ rw.rejection_reason }}</td><td>{{ rw.created_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <h6>Recent Scrap/Rejected</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead><tr><th>Drawing</th><th>Qty</th><th>Reason</th><th>Time</th></tr></thead>
+                                    <tbody>
+                                        {% for sc in recent_scrap %}
+                                        <tr><td>{{ sc.drawing_rel.drawing_number if sc.drawing_rel else 'N/A' }}</td><td>{{ sc.quantity_scrapped }}</td><td>{{ sc.reason }}</td><td>{{ sc.scrapped_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Excel Upload Section -->
     <div class="card mb-4">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Upload Production Plan</h5>
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-file-import me-2"></i>Upload Drawing-SAP Mapping</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('manager_dashboard') }}" enctype="multipart/form-data">
+            <form method="POST" enctype="multipart/form-data">
                 <div class="mb-3">
-                    <label for="production_plan_file" class="form-label">Select Production Plan (.xlsx file)</label>
-                    <input class="form-control" type="file" id="production_plan_file" name="production_plan_file" accept=".xlsx" required>
+                    <label class="form-label">Upload Drawing-SAP Mapping (.xlsx)</label>
+                    <input class="form-control" type="file" name="drawing_mapping_file" accept=".xlsx" required>
+                    <small class="text-muted">File must contain columns: drawing_number, sap_id</small>
                 </div>
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-upload me-2"></i>Upload Plan
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload me-2"></i>Upload Mapping
                 </button>
             </form>
         </div>
@@ -39,8 +109,8 @@
 
     <!-- Rework Approval Section -->
     <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-check-circle me-2"></i>Rework Approvals</h5>
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Rework Approvals</h5>
         </div>
         <div class="card-body">
             {% if rework_queue %}
@@ -191,21 +261,38 @@
         </div>
     </div>
 
-    <!-- Upload Section -->
+    <!-- Add a drawings list section -->
     <div class="card mb-4">
-        <div class="card-header">
-            <h5>Upload Drawing Sheet</h5>
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-list me-2"></i>Current Drawing-SAP Mappings</h5>
         </div>
         <div class="card-body">
-            <form method="POST" enctype="multipart/form-data" action="{{ url_for('manager_dashboard') }}">
-                <div class="mb-3">
-                    <label for="drawing_sheet_file" class="form-label">Select Drawing Sheet (Excel)</label>
-                    <input class="form-control" type="file" id="drawing_sheet_file" name="drawing_sheet_file" accept=".xlsx" required>
-                    <div class="form-text">File must contain 'drawing_number' and 'sap_id' columns</div>
-                </div>
-                <input type="hidden" name="action" value="upload_drawing_sheet">
-                <button type="submit" class="btn btn-primary">Upload</button>
-            </form>
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Drawing Number</th>
+                            <th>SAP ID</th>
+                            <th>Linked End Product</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for drawing in drawings %}
+                        <tr>
+                            <td>{{ drawing.drawing_number }}</td>
+                            <td>{{ drawing.sap_id }}</td>
+                            <td>
+                                {% if drawing.end_product_rel %}
+                                    {{ drawing.end_product_rel.name }}
+                                {% else %}
+                                    <span class="text-danger">Not linked</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

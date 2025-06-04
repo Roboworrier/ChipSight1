@@ -1,8 +1,8 @@
-"""initial migration
+"""Fixed OperatorSession-OperatorLog relationship
 
-Revision ID: 5c560ba19204
+Revision ID: 28f04ff3c052
 Revises: 
-Create Date: 2025-06-03 01:21:47.870817
+Create Date: 2025-06-03 20:23:07.040682
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '5c560ba19204'
+revision = '28f04ff3c052'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -36,6 +36,18 @@ def upgrade():
     sa.Column('deleted_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('project_code')
+    )
+    op.create_table('system_log',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('timestamp', sa.DateTime(), nullable=True),
+    sa.Column('level', sa.String(length=20), nullable=False),
+    sa.Column('source', sa.String(length=100), nullable=False),
+    sa.Column('message', sa.Text(), nullable=False),
+    sa.Column('stack_trace', sa.Text(), nullable=True),
+    sa.Column('resolved', sa.Boolean(), nullable=True),
+    sa.Column('resolved_by', sa.String(length=100), nullable=True),
+    sa.Column('resolved_at', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('end_product',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -84,32 +96,40 @@ def upgrade():
     )
     op.create_table('operator_log',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('operator_session_id', sa.Integer(), nullable=False),
-    sa.Column('drawing_id', sa.Integer(), nullable=False),
-    sa.Column('end_product_sap_id', sa.String(length=50), nullable=False),
-    sa.Column('setup_start_time', sa.DateTime(), nullable=True),
-    sa.Column('setup_end_time', sa.DateTime(), nullable=True),
-    sa.Column('first_cycle_start_time', sa.DateTime(), nullable=True),
-    sa.Column('last_cycle_start_time', sa.DateTime(), nullable=True),
-    sa.Column('last_cycle_end_time', sa.DateTime(), nullable=True),
-    sa.Column('current_status', sa.String(length=50), nullable=False),
-    sa.Column('run_planned_quantity', sa.Integer(), nullable=True),
-    sa.Column('run_completed_quantity', sa.Integer(), nullable=True),
-    sa.Column('run_rejected_quantity_fpi', sa.Integer(), nullable=True),
-    sa.Column('run_rejected_quantity_lpi', sa.Integer(), nullable=True),
-    sa.Column('run_rework_quantity_fpi', sa.Integer(), nullable=True),
-    sa.Column('run_rework_quantity_lpi', sa.Integer(), nullable=True),
-    sa.Column('fpi_status', sa.String(length=20), nullable=True),
-    sa.Column('lpi_status', sa.String(length=20), nullable=True),
-    sa.Column('production_hold_fpi', sa.Boolean(), nullable=True),
-    sa.Column('is_rework_task', sa.Boolean(), nullable=True),
-    sa.Column('original_operator_log_id', sa.Integer(), nullable=True),
-    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('drawing_number', sa.String(length=100), nullable=True),
+    sa.Column('drawing_id', sa.Integer(), nullable=True),
+    sa.Column('setup_start', sa.DateTime(), nullable=True),
+    sa.Column('setup_done', sa.DateTime(), nullable=True),
+    sa.Column('cycle_start', sa.DateTime(), nullable=True),
+    sa.Column('cycle_done', sa.DateTime(), nullable=True),
+    sa.Column('status', sa.String(length=50), nullable=True),
+    sa.Column('setup_time', sa.Float(), nullable=True),
+    sa.Column('cycle_time', sa.Float(), nullable=True),
+    sa.Column('abort_reason', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('batch_number', sa.String(length=50), nullable=True),
+    sa.Column('planned_quantity', sa.Integer(), nullable=True),
+    sa.Column('completed_quantity', sa.Integer(), nullable=True),
+    sa.Column('rejected_quantity', sa.Integer(), nullable=True),
+    sa.Column('rework_quantity', sa.Integer(), nullable=True),
+    sa.Column('quality_status', sa.String(length=20), nullable=True),
+    sa.Column('operator_id', sa.String(length=50), nullable=True),
+    sa.Column('machine_id', sa.String(length=50), nullable=True),
+    sa.Column('shift', sa.String(length=20), nullable=True),
+    sa.Column('fpi_status', sa.String(length=20), nullable=True),
+    sa.Column('fpi_timestamp', sa.DateTime(), nullable=True),
+    sa.Column('fpi_inspector', sa.String(length=50), nullable=True),
+    sa.Column('lpi_status', sa.String(length=20), nullable=True),
+    sa.Column('lpi_timestamp', sa.DateTime(), nullable=True),
+    sa.Column('lpi_inspector', sa.String(length=50), nullable=True),
+    sa.Column('production_hold', sa.Boolean(), nullable=True),
+    sa.Column('drawing_revision', sa.String(length=20), nullable=True),
+    sa.Column('sap_id', sa.String(length=100), nullable=True),
+    sa.Column('end_product_sap_id', sa.String(length=50), nullable=True),
+    sa.Column('operator_session_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['drawing_id'], ['machine_drawing.id'], ),
     sa.ForeignKeyConstraint(['end_product_sap_id'], ['end_product.sap_id'], ),
     sa.ForeignKeyConstraint(['operator_session_id'], ['operator_session.id'], ),
-    sa.ForeignKeyConstraint(['original_operator_log_id'], ['operator_log.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('quality_check',
@@ -170,6 +190,7 @@ def downgrade():
     op.drop_table('machine_breakdown_log')
     op.drop_table('operator_session')
     op.drop_table('end_product')
+    op.drop_table('system_log')
     op.drop_table('project')
     op.drop_table('machine')
     # ### end Alembic commands ###

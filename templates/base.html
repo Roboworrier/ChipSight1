@@ -524,21 +524,36 @@
     <a href="{{ url_for('planner_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
     </a>
+    <a href="{{ url_for('machine_report') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
+    </a>
 {% elif session.get('active_role') == 'manager' %}
     <a href="{{ url_for('manager_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    <a href="{{ url_for('machine_report') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
     </a>
 {% elif session.get('active_role') == 'quality' %}
     <a href="{{ url_for('quality_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
     </a>
 {% elif session.get('active_role') == 'operator' %}
-    <a href="{{ url_for('operator_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
+    {% if session.get('machine_name') == 'Leadwell-1' %}
+    <a href="{{ url_for('operator_panel_leadwell1') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
     </a>
+    {% elif session.get('machine_name') == 'Leadwell-2' %}
+    <a href="{{ url_for('operator_panel_leadwell2') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    {% endif %}
 {% elif session.get('active_role') == 'plant_head' %}
     <a href="{{ url_for('plant_head_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">
         <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+    </a>
+    <a href="{{ url_for('machine_report') }}" class="list-group-item list-group-item-action bg-dark text-white">
+        <i class="fas fa-chart-line me-2"></i>Live DPR
     </a>
 {% elif session.get('active_role') == 'admin' %}
     <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action bg-dark text-white">

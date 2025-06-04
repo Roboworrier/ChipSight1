@@ -7,7 +7,7 @@ This software and its source code are the exclusive intellectual property of Diw
 Unauthorized copying, modification, distribution, or use is strictly prohibited.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session, make_response
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta, timezone
 import os
@@ -135,10 +135,9 @@ def nl2br_filter(value):
     if not value:
         return ""
     # Convert newlines to <br> tags
-    # The input 'value' is typically a string that Jinja2 would autoescape.
-    # We replace literal newlines. Markup ensures the <br> isn't escaped.
     return Markup(str(value).replace('\n', '<br>\n'))
 
+# Register the filter with Jinja2
 app.jinja_env.filters['nl2br'] = nl2br_filter
 
 # Basic configuration
@@ -148,7 +147,12 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///digital_twin.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['ALLOWED_EXTENSIONS'] = {'xlsx'} # For planner and manager uploads
+app.config['ALLOWED_EXTENSIONS'] = {'xlsx'}  # Only allow Excel files
+
+# Session configuration (for cross-device login)
+app.config['SESSION_COOKIE_DOMAIN'] = None
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
 
 # Encoding configuration
 app.config['JSON_AS_ASCII'] = False
@@ -236,54 +240,74 @@ class OperatorSession(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     
     machine_rel = relationship("Machine", back_populates="operator_sessions")
-    operator_logs = relationship("OperatorLog", back_populates="operator_session_rel", cascade="all, delete-orphan")
+    operator_logs = db.relationship('OperatorLog', backref='operator_session', 
+                                  foreign_keys='OperatorLog.operator_session_id')
     # The 'reported_breakdowns' relationship is now defined after MachineBreakdownLog
 
 class OperatorLog(db.Model):
     __tablename__ = 'operator_log'
     id = db.Column(db.Integer, primary_key=True)
-    operator_session_id = db.Column(db.Integer, db.ForeignKey('operator_session.id'), nullable=False)
-    drawing_id = db.Column(db.Integer, db.ForeignKey('machine_drawing.id'), nullable=False)
-    # Store SAP ID directly for easier querying of overall EndProduct progress
-    end_product_sap_id = db.Column(db.String(50), db.ForeignKey('end_product.sap_id'), nullable=False)
+    drawing_number = db.Column(db.String(100))
+    drawing_id = db.Column(db.Integer, db.ForeignKey('machine_drawing.id'), nullable=True)
+    setup_start_time = db.Column(db.DateTime)  # Renamed from setup_start
+    setup_end_time = db.Column(db.DateTime)    # Renamed from setup_done
+    first_cycle_start_time = db.Column(db.DateTime)  # Renamed from cycle_start
+    last_cycle_end_time = db.Column(db.DateTime)     # Renamed from cycle_done
+    current_status = db.Column(db.String(50))  # Setup Started, Setup Done, Cycle Started, Cycle Completed, etc.
+    setup_time = db.Column(db.Float)  # Time taken for setup in minutes
+    cycle_time = db.Column(db.Float)  # Time taken for cycle in minutes
+    abort_reason = db.Column(db.Text)
+    notes = db.Column(db.Text)  # Add notes column for tracking log history
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    batch_number = db.Column(db.String(50))  # Track production batches
+    run_planned_quantity = db.Column(db.Integer)  # Renamed from planned_quantity
+    run_completed_quantity = db.Column(db.Integer, default=0)  # Renamed from completed_quantity
+    run_rejected_quantity_fpi = db.Column(db.Integer, default=0)  # Split from rejected_quantity
+    run_rejected_quantity_lpi = db.Column(db.Integer, default=0)  # Split from rejected_quantity
+    run_rework_quantity_fpi = db.Column(db.Integer, default=0)  # Split from rework_quantity
+    run_rework_quantity_lpi = db.Column(db.Integer, default=0)  # Split from rework_quantity
+    quality_status = db.Column(db.String(20))  # Pending QC, QC Pass, QC Fail, In Rework
+    quality_checks = db.relationship('QualityCheck', backref='operator_log', lazy=True)
+    operator_id = db.Column(db.String(50))  # Track operator responsible
+    machine_id = db.Column(db.String(50))  # Track machine used
+    shift = db.Column(db.String(20))  # Track shift
+    # New columns for enhanced FPI/LPI control
+    fpi_status = db.Column(db.String(20), default='Pending')  # Pending, Pass, Fail
+    fpi_timestamp = db.Column(db.DateTime)  # When FPI was performed
+    fpi_inspector = db.Column(db.String(50))  # Inspector who performed FPI
+    lpi_status = db.Column(db.String(20))  # Pending, Pass, Fail
+    lpi_timestamp = db.Column(db.DateTime)  # When LPI was performed
+    lpi_inspector = db.Column(db.String(50))  # Inspector who performed LPI
+    production_hold_fpi = db.Column(db.Boolean, default=True)  # Renamed from production_hold
+    drawing_revision = db.Column(db.String(20))  # Track drawing revision
+    sap_id = db.Column(db.String(100))  # Link to SAP order
+    end_product_sap_id = db.Column(db.String(50), db.ForeignKey('end_product.sap_id'), nullable=True)
+    operator_session_id = db.Column(db.Integer, db.ForeignKey('operator_session.id'))
 
-    setup_start_time = db.Column(db.DateTime, nullable=True)
-    setup_end_time = db.Column(db.DateTime, nullable=True)
+    # Relationships
+    end_product_sap_id_rel = relationship("EndProduct", back_populates="operator_logs_for_sap")
+    drawing_rel = relationship("MachineDrawing", back_populates="operator_logs")
     
-    first_cycle_start_time = db.Column(db.DateTime, nullable=True) # Start time of the very first cycle for this log
-    last_cycle_start_time = db.Column(db.DateTime, nullable=True)  # Start time of the most recent cycle attempt
-    last_cycle_end_time = db.Column(db.DateTime, nullable=True)    # End time of the most recent completed cycle
-
-    current_status = db.Column(db.String(50), nullable=False, default='pending_setup')
+    # Add missing relationships
+    rework_items_sourced = relationship(
+        "ReworkQueue", 
+        foreign_keys='ReworkQueue.source_operator_log_id',
+        back_populates="source_operator_log_rel"
+    )
     
-    run_planned_quantity = db.Column(db.Integer, default=1) # Typically 1 for FPI, or batch size for LPI relevant cycles
-    run_completed_quantity = db.Column(db.Integer, default=0) # Successfully made in this log's scope
-    run_rejected_quantity_fpi = db.Column(db.Integer, default=0)
-    run_rejected_quantity_lpi = db.Column(db.Integer, default=0)
-    run_rework_quantity_fpi = db.Column(db.Integer, default=0)
-    run_rework_quantity_lpi = db.Column(db.Integer, default=0)
-
-    fpi_status = db.Column(db.String(20), default='pending')  # pending, pass, fail, rework
-    lpi_status = db.Column(db.String(20), default='pending')  # pending, pass, fail, rework (applies to batch if relevant)
+    rework_attempt_for_queue = relationship(
+        "ReworkQueue",
+        foreign_keys='ReworkQueue.assigned_operator_log_id',
+        back_populates="assigned_operator_log_rel",
+        uselist=False
+    )
     
-    production_hold_fpi = db.Column(db.Boolean, default=False) # True if FPI for this drawing is needed/failed
-    
-    is_rework_task = db.Column(db.Boolean, default=False)
-    original_operator_log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=True) # Link if this is a rework of a previous log's part
-    notes = db.Column(db.Text, nullable=True) # Notes for any specific details about the log, e.g., cancellation reason
-
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-
-    operator_session_rel = relationship("OperatorSession", back_populates="operator_logs")
-    drawing_rel = relationship("MachineDrawing", foreign_keys=[drawing_id], back_populates="operator_logs")
-    end_product_sap_id_rel = relationship("EndProduct", foreign_keys=[end_product_sap_id], back_populates="operator_logs_for_sap")
-    
-    quality_checks = relationship("QualityCheck", back_populates="operator_log_rel", cascade="all, delete-orphan")
-    # If this log produced items for rework
-    rework_items_sourced = relationship("ReworkQueue", foreign_keys='ReworkQueue.source_operator_log_id', back_populates="source_operator_log_rel")
-    # If this log is an attempt to rework an item
-    rework_attempt_for_queue = relationship("ReworkQueue", foreign_keys='ReworkQueue.assigned_operator_log_id', back_populates="assigned_operator_log_rel")
-
+    # Add relationship for scrapped_items if missing
+    scrapped_items = relationship(
+        "ScrapLog",
+        foreign_keys='ScrapLog.operator_log_id',
+        back_populates="operator_log_rel"
+    )
 
 class QualityCheck(db.Model):
     __tablename__ = 'quality_check'
@@ -300,22 +324,26 @@ class QualityCheck(db.Model):
     rejection_reason = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     
-    operator_log_rel = relationship("OperatorLog", back_populates="quality_checks")
+    operator_log_rel = relationship("OperatorLog", back_populates="quality_checks", overlaps="operator_log")
     # If this QC sends items to rework
     rework_items_generated = relationship("ReworkQueue", foreign_keys='ReworkQueue.originating_quality_check_id', back_populates="originating_quality_check_rel")
     # If this QC results in scrap
-    scrapped_items_generated = relationship("ScrapLog", back_populates="originating_quality_check_rel")
+    scrapped_items_generated = relationship(
+        "ScrapLog", 
+        foreign_keys='ScrapLog.originating_quality_check_id',
+        back_populates="originating_quality_check_rel"
+    )
 
 class ReworkQueue(db.Model):
     __tablename__ = 'rework_queue'
     id = db.Column(db.Integer, primary_key=True)
-    source_operator_log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=True) # Log that produced the part(s)
-    originating_quality_check_id = db.Column(db.Integer, db.ForeignKey('quality_check.id'), nullable=False) # QC that sent to rework
+    source_operator_log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=True)
+    originating_quality_check_id = db.Column(db.Integer, db.ForeignKey('quality_check.id'), nullable=False)
     drawing_id = db.Column(db.Integer, db.ForeignKey('machine_drawing.id'), nullable=False)
     
     quantity_to_rework = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(30), default='pending_manager_approval')  # pending_manager_approval, manager_approved, manager_rejected, rework_assigned, rework_in_progress, rework_completed_pending_qc, rework_qc_pass, rework_qc_fail_scrapped
-    rejection_reason = db.Column(db.Text, nullable=True) # From original QC
+    status = db.Column(db.String(30), default='pending_manager_approval')
+    rejection_reason = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     
     # Manager approval fields
@@ -326,11 +354,31 @@ class ReworkQueue(db.Model):
     # Log for the rework attempt itself
     assigned_operator_log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=True, unique=True) 
 
-    source_operator_log_rel = relationship("OperatorLog", foreign_keys=[source_operator_log_id], back_populates="rework_items_sourced")
-    originating_quality_check_rel = relationship("QualityCheck", foreign_keys=[originating_quality_check_id], back_populates="rework_items_generated")
-    drawing_rel = relationship("MachineDrawing", foreign_keys=[drawing_id], back_populates="rework_items")
-    assigned_operator_log_rel = relationship("OperatorLog", foreign_keys=[assigned_operator_log_id], back_populates="rework_attempt_for_queue")
-
+    # Fix relationships
+    source_operator_log_rel = relationship(
+        "OperatorLog", 
+        foreign_keys=[source_operator_log_id],
+        back_populates="rework_items_sourced"
+    )
+    
+    originating_quality_check_rel = relationship(
+        "QualityCheck", 
+        foreign_keys=[originating_quality_check_id],
+        back_populates="rework_items_generated"
+    )
+    
+    drawing_rel = relationship(
+        "MachineDrawing", 
+        foreign_keys=[drawing_id],
+        back_populates="rework_items"
+    )
+    
+    assigned_operator_log_rel = relationship(
+        "OperatorLog", 
+        foreign_keys=[assigned_operator_log_id],
+        back_populates="rework_attempt_for_queue",
+        uselist=False
+    )
 
 class ScrapLog(db.Model):
     __tablename__ = 'scrap_log'
@@ -340,9 +388,26 @@ class ScrapLog(db.Model):
     quantity_scrapped = db.Column(db.Integer, nullable=False)
     reason = db.Column(db.Text, nullable=True)
     scrapped_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    scrapped_by = db.Column(db.String(100), nullable=True)  # Added missing column
+    operator_log_id = db.Column(db.Integer, db.ForeignKey('operator_log.id'), nullable=True)  # Added missing column
 
-    originating_quality_check_rel = relationship("QualityCheck", back_populates="scrapped_items_generated")
-    drawing_rel = relationship("MachineDrawing", foreign_keys=[drawing_id], back_populates="scrapped_items")
+    originating_quality_check_rel = relationship(
+        "QualityCheck", 
+        foreign_keys=[originating_quality_check_id], 
+        back_populates="scrapped_items_generated"
+    )
+    
+    drawing_rel = relationship(
+        "MachineDrawing", 
+        foreign_keys=[drawing_id], 
+        back_populates="scrapped_items"
+    )
+    
+    operator_log_rel = relationship(
+        "OperatorLog", 
+        foreign_keys=[operator_log_id], 
+        back_populates="scrapped_items"
+    )
 
 class MachineBreakdownLog(db.Model):
     __tablename__ = 'machine_breakdown_log'
@@ -533,47 +598,51 @@ def login_general():
         clear_user_session()
         username = request.form.get('username')
         password = request.form.get('password') 
-        
         # Add this block for admin
         if username == 'admin' and password == 'adminpass':  # Change this password!
             session['active_role'] = 'admin'
             session['username'] = username
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Admin login successful!', 'success')
             return redirect(url_for('admin_dashboard'))
         elif username == 'planthead' and password == 'ph123':
             session['active_role'] = 'plant_head'
             session['username'] = username
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Plant Head login successful!', 'success')
             return redirect(url_for('plant_head_dashboard'))
         elif username == 'planner' and password == 'plannerpass':
             session['active_role'] = 'planner'
             session['username'] = username
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Planner login successful!', 'success')
-            print(f"DEBUG: Session after planner login: {dict(session)}")
             return redirect(url_for('planner_dashboard'))
         elif username == 'manager' and password == 'managerpass':
             session['active_role'] = 'manager'
             session['username'] = username
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Manager login successful!', 'success')
-            print(f"DEBUG: Session after manager login: {dict(session)}")
             return redirect(url_for('manager_dashboard'))
         elif username == 'quality' and password == 'qualitypass':
             session['active_role'] = 'quality'
             session['username'] = username 
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Quality login successful!', 'success')
-            print(f"DEBUG: Session after quality login: {dict(session)}")
             return redirect(url_for('quality_dashboard'))
         elif username == 'plant_head' and password == 'plantpass':
             session['active_role'] = 'plant_head'
             session['username'] = username
+            print("Logged in as", username, "with role", session.get('active_role'))
+            print("Session contents:", dict(session))
             flash('Plant Head login successful!', 'success')
-            print(f"DEBUG: Session after plant head login: {dict(session)}")
             return redirect(url_for('plant_head_dashboard'))
         else:
             flash('Invalid credentials.', 'danger')
-    else: # GET request - REMOVED clear_user_session() from here
-        pass
-
     return render_template('login_general.html')
 
 @app.route('/logout_general', methods=['POST'])
@@ -587,7 +656,7 @@ def logout_general():
 @app.route('/planner', methods=['GET', 'POST'])
 def planner_dashboard():
     print(f"DEBUG: Session at start of /planner: {dict(session)}") 
-    if session.get('active_role') != 'planner': # Use 'active_role'
+    if session.get('active_role') != 'planner':
         flash('Access denied. Please login as Planner.', 'danger')
         return redirect(url_for('login_general'))
 
@@ -699,12 +768,51 @@ def planner_dashboard():
             
     # Get only active (non-deleted) projects for planner view
     projects = Project.query.filter_by(is_deleted=False).order_by(Project.project_code).all()
-    return render_template('planner.html', projects=projects)
+
+    # --- Digital Twin Summary Data ---
+    # Production summary by end product
+    production_summary = db.session.query(
+        EndProduct.name,
+        EndProduct.sap_id,
+        EndProduct.quantity,
+        db.func.sum(OperatorLog.run_completed_quantity).label('completed'),
+        db.func.sum(OperatorLog.run_rejected_quantity_fpi + OperatorLog.run_rejected_quantity_lpi).label('rejected'),
+        db.func.sum(OperatorLog.run_rework_quantity_fpi + OperatorLog.run_rework_quantity_lpi).label('rework')
+    ).join(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id, isouter=True)
+    production_summary = production_summary.group_by(EndProduct.id).all()
+
+    # Recent/completed end products (FIXED: use .having for aggregate)
+    completed_end_products = (
+        db.session.query(EndProduct)
+        .outerjoin(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id)
+        .group_by(EndProduct.id)
+        .having(db.func.coalesce(db.func.sum(OperatorLog.run_completed_quantity), 0) >= EndProduct.quantity)
+        .all()
+    )
+
+    # Recent quality checks
+    recent_quality_checks = QualityCheck.query.order_by(QualityCheck.timestamp.desc()).limit(10).all()
+
+    # Recent/pending rework
+    recent_rework = ReworkQueue.query.order_by(ReworkQueue.created_at.desc()).limit(10).all()
+
+    # Recent scrap/rejects
+    recent_scrap = ScrapLog.query.order_by(ScrapLog.scrapped_at.desc()).limit(10).all()
+
+    digital_twin_url = url_for('digital_twin_dashboard')
+
+    return render_template('planner.html', projects=projects,
+        production_summary=production_summary,
+        completed_end_products=completed_end_products,
+        recent_quality_checks=recent_quality_checks,
+        recent_rework=recent_rework,
+        recent_scrap=recent_scrap,
+        digital_twin_url=digital_twin_url
+    )
 
 # --- MANAGER ---
 @app.route('/manager', methods=['GET', 'POST'])
 def manager_dashboard():
-    print(f"DEBUG: Session at start of /manager: {dict(session)}") 
     if session.get('active_role') != 'manager':
         flash('Access denied. Please login as Manager.', 'danger')
         return redirect(url_for('login_general'))
@@ -712,7 +820,50 @@ def manager_dashboard():
     if request.method == 'POST':
         action = request.form.get('action')
         
-        if action == 'approve_rework':
+        # Handle drawing-SAP mapping upload
+        if 'drawing_mapping_file' in request.files:
+            file = request.files['drawing_mapping_file']
+            if file and allowed_file(file.filename):
+                try:
+                    df = pd.read_excel(file)
+                    
+                    # Validate required columns
+                    if not all(col in df.columns for col in ['drawing_number', 'sap_id']):
+                        flash('File must contain "drawing_number" and "sap_id" columns', 'danger')
+                        return redirect(url_for('manager_dashboard'))
+                    
+                    # Process each row
+                    for _, row in df.iterrows():
+                        drawing_number = str(row['drawing_number']).strip()
+                        sap_id = str(row['sap_id']).strip()
+                        
+                        # Validate SAP ID exists
+                        if not EndProduct.query.filter_by(sap_id=sap_id).first():
+                            flash(f'SAP ID {sap_id} not found - skipping drawing {drawing_number}', 'warning')
+                            continue
+                            
+                        # Update or create drawing
+                        drawing = MachineDrawing.query.filter_by(drawing_number=drawing_number).first()
+                        if drawing:
+                            drawing.sap_id = sap_id
+                        else:
+                            drawing = MachineDrawing(
+                                drawing_number=drawing_number,
+                                sap_id=sap_id
+                            )
+                            db.session.add(drawing)
+                    
+                    db.session.commit()
+                    flash('Drawing-SAP mapping updated successfully!', 'success')
+                    
+                except Exception as e:
+                    db.session.rollback()
+                    flash(f'Error processing file: {str(e)}', 'danger')
+            
+            return redirect(url_for('manager_dashboard'))
+
+        # Handle rework approvals/rejections
+        elif action in ['approve_rework', 'reject_rework']:
             rework_id = request.form.get('rework_id')
             manager_notes = request.form.get('manager_notes', '').strip()
             
@@ -723,7 +874,7 @@ def manager_dashboard():
                 if not rework_item:
                     flash('Rework item not found.', 'danger')
                 else:
-                    rework_item.status = 'manager_approved'
+                    rework_item.status = 'manager_approved' if action == 'approve_rework' else 'manager_rejected'
                     rework_item.manager_approved_by = session.get('username')
                     rework_item.manager_approval_time = datetime.now(timezone.utc)
                     rework_item.manager_notes = manager_notes
@@ -731,54 +882,45 @@ def manager_dashboard():
                     flash('Rework request approved successfully.', 'success')
             
             return redirect(url_for('manager_dashboard'))
-            
-        elif action == 'reject_rework':
-            rework_id = request.form.get('rework_id')
-            manager_notes = request.form.get('manager_notes', '').strip()
-            
-            if not rework_id:
-                flash('Rework ID is required for rejection.', 'danger')
-            else:
-                rework_item = ReworkQueue.query.get(rework_id)
-                if not rework_item:
-                    flash('Rework item not found.', 'danger')
-                else:
-                    rework_item.status = 'manager_rejected'
-                    rework_item.manager_approved_by = session.get('username')
-                    rework_item.manager_approval_time = datetime.now(timezone.utc)
-                    rework_item.manager_notes = manager_notes
-                    
-                    # Create scrap record for rejected rework
-                    scrap_record = ScrapLog(
-                        drawing_id=rework_item.drawing_id,
-                        quantity_scrapped=rework_item.quantity_to_rework,
-                        reason=f"Rework rejected by manager. Notes: {manager_notes}",
-                        scrapped_at=datetime.now(timezone.utc)
-                    )
-                    db.session.add(scrap_record)
-                    db.session.commit()
-                    flash('Rework request rejected and items marked as scrapped.', 'warning')
-            
-            return redirect(url_for('manager_dashboard'))
 
-    # Get all rework queue items
-    rework_queue = ReworkQueue.query.order_by(
-        case(
-            (ReworkQueue.status == 'pending_manager_approval', 1),
-            (ReworkQueue.status == 'manager_approved', 2),
-            (ReworkQueue.status == 'rework_in_progress', 3),
-            (ReworkQueue.status == 'rework_completed_pending_qc', 4),
-            else_=5
-        ),
-        ReworkQueue.id.desc()
-    ).all()
+    # Get data for template
+    rework_queue = ReworkQueue.query.order_by(ReworkQueue.created_at.desc()).all()
+    drawings = MachineDrawing.query.order_by(MachineDrawing.drawing_number).all()
+    
+    # --- Digital Twin Summary Data ---
+    production_summary = db.session.query(
+        EndProduct.name,
+        EndProduct.sap_id,
+        EndProduct.quantity,
+        db.func.sum(OperatorLog.run_completed_quantity).label('completed'),
+        db.func.sum(OperatorLog.run_rejected_quantity_fpi + OperatorLog.run_rejected_quantity_lpi).label('rejected'),
+        db.func.sum(OperatorLog.run_rework_quantity_fpi + OperatorLog.run_rework_quantity_lpi).label('rework')
+    ).join(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id, isouter=True)
+    production_summary = production_summary.group_by(EndProduct.id).all()
 
-    # Get all active projects for production plan overview
-    projects = Project.query.filter_by(is_deleted=False).order_by(Project.project_code).all()
+    completed_end_products = (
+        db.session.query(EndProduct)
+        .outerjoin(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id)
+        .group_by(EndProduct.id)
+        .having(db.func.coalesce(db.func.sum(OperatorLog.run_completed_quantity), 0) >= EndProduct.quantity)
+        .all()
+    )
 
-    return render_template('manager.html', 
-                         rework_queue=rework_queue,
-                         projects=projects)
+    recent_quality_checks = QualityCheck.query.order_by(QualityCheck.timestamp.desc()).limit(10).all()
+    recent_rework = ReworkQueue.query.order_by(ReworkQueue.created_at.desc()).limit(10).all()
+    recent_scrap = ScrapLog.query.order_by(ScrapLog.scrapped_at.desc()).limit(10).all()
+    digital_twin_url = url_for('digital_twin_dashboard')
+    
+    return render_template('manager.html',
+        rework_queue=rework_queue,
+        drawings=drawings,
+        production_summary=production_summary,
+        completed_end_products=completed_end_products,
+        recent_quality_checks=recent_quality_checks,
+        recent_rework=recent_rework,
+        recent_scrap=recent_scrap,
+        digital_twin_url=digital_twin_url
+    )
 
 # --- OPERATOR ---
 @app.route('/operator_login', methods=['GET', 'POST'])
@@ -831,6 +973,7 @@ def operator_login():
                 session['operator_session_id'] = new_op_session.id
                 session['operator_name'] = operator_name
                 session['machine_name'] = machine_name 
+                session['shift'] = shift  # Add shift to session
 
                 # Restore previous session state
                 previous_state = restore_operator_session(operator_name, machine_name)
@@ -896,17 +1039,65 @@ def operator_panel_common(machine_name, template_name):
     active_drawing = MachineDrawing.query.get(session.get('current_drawing_id'))
     operator_session = OperatorSession.query.get(session.get('operator_session_id'))
     approved_rework = ReworkQueue.query.filter_by(status='manager_approved').all()
+    current_machine_obj = Machine.query.filter_by(name=machine_name).first()  # <-- Add this
+    
+    # Get active logs for the current operator session
+    active_logs = OperatorLog.query.filter_by(
+        operator_session_id=operator_session.id
+    ).filter(
+        OperatorLog.current_status.in_(['setup_started', 'setup_done', 'cycle_started', 'cycle_paused', 'fpi_passed_ready_for_cycle'])
+    ).all() if operator_session else []
     
     if request.method == 'POST':
         action = request.form.get('action')
         
-        if action == 'start_setup' and active_drawing:
+        if action == 'select_drawing_and_start_session':
+            drawing_number = request.form.get('drawing_number_input')
+            if not drawing_number:
+                flash('Please enter a drawing number', 'warning')
+                return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+            
+            drawing = MachineDrawing.query.filter_by(drawing_number=drawing_number).first()
+            if not drawing:
+                flash(f'Drawing number {drawing_number} not found', 'danger')
+                return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+            
+            # Check if there's an active log for this drawing
+            active_log = OperatorLog.query.filter_by(
+                drawing_id=drawing.id,
+                operator_session_id=operator_session.id
+            ).filter(
+                OperatorLog.current_status.in_(['setup_started', 'setup_done', 'cycle_started', 'cycle_paused', 'fpi_passed_ready_for_cycle'])
+            ).first()
+            
+            if active_log:
+                session['current_operator_log_id'] = active_log.id
+                session['current_drawing_id'] = drawing.id
+                flash(f'Resumed active session for drawing {drawing_number}', 'info')
+            else:
+                session['current_operator_log_id'] = None  # Allow setup for new drawing
+                session['current_drawing_id'] = drawing.id
+                flash(f'Selected drawing {drawing_number}', 'success')
+            
+            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+            
+        elif action == 'start_setup' and active_drawing:
+            # Get the end product to get planned quantity
+            end_product = active_drawing.end_product_rel
+            if not end_product:
+                flash('No end product found for this drawing', 'danger')
+                return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+
             new_log = OperatorLog(
                 operator_session_id=operator_session.id,
                 drawing_id=active_drawing.id,
                 end_product_sap_id=active_drawing.sap_id,
                 current_status='setup_started',
-                setup_start_time=datetime.now(timezone.utc)
+                setup_start_time=datetime.now(timezone.utc),
+                run_planned_quantity=end_product.quantity,  # Set planned quantity from end product
+                run_completed_quantity=0,  # Initialize completed quantity
+                fpi_status='pending',  # Initialize FPI status
+                production_hold_fpi=True  # Hold production until FPI
             )
             db.session.add(new_log)
             db.session.commit()
@@ -921,11 +1112,61 @@ def operator_panel_common(machine_name, template_name):
             flash('Setup completed', 'success')
             return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
             
-        elif action == 'start_cycle' and current_log:
-            current_log.current_status = 'cycle_started'
-            current_log.first_cycle_start_time = datetime.now(timezone.utc)
+        elif action == 'cycle_start' and current_log:
+            # Only allow cycle start if:
+            # 1. Setup is done and no FPI required yet (first cycle)
+            # 2. Setup is done and FPI is passed
+            # 3. Cycle was paused
+            if current_log.current_status in ['setup_done', 'fpi_passed_ready_for_cycle', 'cycle_paused']:
+                current_log.current_status = 'cycle_started'
+                if not current_log.first_cycle_start_time:
+                    current_log.first_cycle_start_time = datetime.now(timezone.utc)
+                db.session.commit()
+                flash('Cycle started', 'success')
+            else:
+                flash('Cannot start cycle in current state', 'warning')
+            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+
+        elif action == 'cycle_complete' and current_log:
+            if current_log.current_status == 'cycle_started':
+                # Increment completed quantity
+                current_log.run_completed_quantity = (current_log.run_completed_quantity or 0) + 1
+                current_log.last_cycle_end_time = datetime.now(timezone.utc)
+                
+                # Determine next status based on conditions
+                if current_log.run_completed_quantity == 1:
+                    # First piece needs FPI
+                    current_log.current_status = 'cycle_completed_pending_fpi'
+                    current_log.fpi_status = 'pending'
+                    current_log.production_hold_fpi = True
+                elif current_log.run_planned_quantity and current_log.run_completed_quantity >= current_log.run_planned_quantity:
+                    # Reached planned quantity, needs LPI
+                    current_log.current_status = 'cycle_completed_pending_lpi'
+                    current_log.lpi_status = 'pending'
+                else:
+                    # Normal cycle completion, pause for next cycle
+                    current_log.current_status = 'cycle_paused'
+                
+                db.session.commit()
+                flash('Cycle completed.', 'success')
+            else:
+                flash('Cycle must be started first.', 'warning')
+            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+
+        elif action == 'cycle_pause' and current_log:
+            if current_log.current_status == 'cycle_started':
+                current_log.current_status = 'cycle_paused'
+                db.session.commit()
+                flash('Cycle paused.', 'info')
+            else:
+                flash('No active cycle to pause.', 'warning')
+            return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
+
+        elif action == 'cancel_current_drawing_log' and current_log:
+            current_log.current_status = 'admin_closed'
             db.session.commit()
-            flash('Cycle started', 'success')
+            session.pop('current_operator_log_id', None)  # Ensure session state is cleared
+            flash('Current log cancelled.', 'info')
             return redirect(url_for(f'operator_panel_{machine_name.lower().replace("-","")}'))
     
     return render_template(template_name,
@@ -934,7 +1175,9 @@ def operator_panel_common(machine_name, template_name):
         current_log=current_log,
         active_drawing=active_drawing,
         approved_rework=approved_rework,
-        now=datetime.now(timezone.utc)
+        active_logs=active_logs,  # Add active_logs to template context
+        now=datetime.now(timezone.utc),
+        current_machine_obj=current_machine_obj  # Pass machine object to template
     )
 
 # --- QUALITY ---
@@ -943,6 +1186,10 @@ def quality_dashboard():
     if session.get('active_role') != 'quality':
         flash('Access denied. Please login as Quality Inspector.', 'danger')
         return redirect(url_for('login_general'))
+
+    # Configure session to be permanent and set a long expiry
+    session.permanent = True
+    app.permanent_session_lifetime = timedelta(days=30)  # Set session to last 30 days
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -973,6 +1220,222 @@ def quality_dashboard():
         # For all other actions, ensure inspector name is set
         if not session.get('quality_inspector_name'):
             flash('Please set your inspector name first.', 'warning')
+            return redirect(url_for('quality_dashboard'))
+        
+        # Handle the new simplified quality check form
+        if action == 'simple_quality_check':
+            drawing_number = request.form.get('drawing_number', '').strip()
+            check_type = request.form.get('check_type')  # FPI or LPI
+            result = request.form.get('result')  # pass, rework, or reject
+            rejection_reason = request.form.get('rejection_reason', '').strip()
+            log_id = request.form.get('log_id')  # May be provided if clicked from table
+            
+            # Validate inputs
+            if not drawing_number:
+                flash('Drawing number is required.', 'danger')
+                return redirect(url_for('quality_dashboard'))
+                
+            if not check_type or check_type not in ['FPI', 'LPI']:
+                flash('Valid check type (FPI or LPI) is required.', 'danger')
+                return redirect(url_for('quality_dashboard'))
+                
+            if not result or result not in ['pass', 'rework', 'reject']:
+                flash('Valid result (pass, rework, or reject) is required.', 'danger')
+                return redirect(url_for('quality_dashboard'))
+            
+            # If log_id is provided, use that specific log
+            if log_id:
+                op_log_to_inspect = OperatorLog.query.get(log_id)
+                if not op_log_to_inspect:
+                    flash('Operator log not found.', 'danger')
+                    return redirect(url_for('quality_dashboard'))
+                    
+                # Verify the drawing number matches
+                if op_log_to_inspect.drawing_rel and op_log_to_inspect.drawing_rel.drawing_number != drawing_number:
+                    flash(f'Drawing number mismatch. Expected {op_log_to_inspect.drawing_rel.drawing_number}, got {drawing_number}.', 'danger')
+                    return redirect(url_for('quality_dashboard'))
+                    
+                # Verify the log is in the correct state for the check type
+                if check_type == 'FPI' and op_log_to_inspect.current_status != 'cycle_completed_pending_fpi':
+                    flash('This log is not pending FPI.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+                elif check_type == 'LPI' and op_log_to_inspect.current_status != 'cycle_completed_pending_lpi':
+                    flash('This log is not pending LPI.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+            else:
+                # No log_id provided, find a matching log based on drawing number and check type
+                drawing = MachineDrawing.query.filter_by(drawing_number=drawing_number).first()
+                if not drawing:
+                    flash(f'Drawing number {drawing_number} not found.', 'danger')
+                    return redirect(url_for('quality_dashboard'))
+                
+                if check_type == 'FPI':
+                    op_log_to_inspect = OperatorLog.query.filter_by(
+                        drawing_id=drawing.id,
+                        current_status='cycle_completed_pending_fpi'
+                    ).order_by(OperatorLog.created_at.desc()).first()
+                else:  # LPI
+                    op_log_to_inspect = OperatorLog.query.filter_by(
+                        drawing_id=drawing.id,
+                        current_status='cycle_completed_pending_lpi'
+                    ).order_by(OperatorLog.created_at.desc()).first()
+                
+                if not op_log_to_inspect:
+                    flash(f'No pending {check_type} found for drawing {drawing_number}.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+            
+            # Process based on check type
+            if check_type == 'FPI':
+                # Create quality check record
+                new_qc_record = QualityCheck(
+                    operator_log_id=op_log_to_inspect.id,
+                    inspector_name=session.get('quality_inspector_name'),
+                    check_type='FPI',
+                    result=result,
+                    rejection_reason=rejection_reason if result in ['reject', 'rework'] else None
+                )
+                db.session.add(new_qc_record)
+                db.session.flush()
+
+                if result == 'pass':
+                    op_log_to_inspect.fpi_status = 'pass'
+                    op_log_to_inspect.production_hold_fpi = False
+                    op_log_to_inspect.current_status = 'fpi_passed_ready_for_cycle'
+                    flash('FPI passed. Operator can continue production.', 'success')
+
+                elif result == 'reject':
+                    op_log_to_inspect.fpi_status = 'fail'
+                    op_log_to_inspect.production_hold_fpi = True
+                    op_log_to_inspect.current_status = 'fpi_failed_setup_pending'
+                    op_log_to_inspect.run_rejected_quantity_fpi = (op_log_to_inspect.run_rejected_quantity_fpi or 0) + 1
+
+                    # Create scrap record for rejected FPI
+                    scrap_record = ScrapLog(
+                        drawing_id=op_log_to_inspect.drawing_id,
+                        quantity_scrapped=1,
+                        reason=f"FPI Rejected: {rejection_reason}",
+                        scrapped_at=datetime.now(timezone.utc),
+                        scrapped_by=session.get('quality_inspector_name'),
+                        operator_log_id=op_log_to_inspect.id,
+                        originating_quality_check_id=new_qc_record.id
+                    )
+                    db.session.add(scrap_record)
+                    flash('FPI failed. Parts marked as scrap.', 'warning')
+
+                elif result == 'rework':
+                    op_log_to_inspect.fpi_status = 'rework'
+                    op_log_to_inspect.production_hold_fpi = True
+                    op_log_to_inspect.current_status = 'fpi_failed_setup_pending'
+                    op_log_to_inspect.run_rework_quantity_fpi = (op_log_to_inspect.run_rework_quantity_fpi or 0) + 1
+                    db.session.flush()
+
+                    # Create rework queue item
+                    rework_item = ReworkQueue(
+                        source_operator_log_id=op_log_to_inspect.id,
+                        originating_quality_check_id=new_qc_record.id,
+                        drawing_id=op_log_to_inspect.drawing_id,
+                        quantity_to_rework=1,
+                        rejection_reason=rejection_reason,
+                        status='pending_manager_approval'  # Explicitly set status
+                    )
+                    db.session.add(rework_item)
+                    flash('FPI failed. Parts sent for rework approval.', 'warning')
+                
+            else:  # LPI
+                # Get quantities for LPI
+                quantity_inspected = request.form.get('quantity_inspected', type=int, default=1)
+                quantity_rejected = request.form.get('quantity_rejected', type=int, default=0)
+                quantity_to_rework = request.form.get('quantity_to_rework', type=int, default=0)
+                
+                # Validate quantities
+                if quantity_inspected > op_log_to_inspect.run_completed_quantity:
+                    flash('Cannot inspect more parts than were produced.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+
+                if quantity_rejected and quantity_rejected > quantity_inspected:
+                    flash('Cannot reject more parts than were inspected.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+
+                if quantity_to_rework and quantity_to_rework > quantity_inspected:
+                    flash('Cannot rework more parts than were inspected.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+
+                if quantity_rejected and quantity_to_rework and (quantity_rejected + quantity_to_rework) > quantity_inspected:
+                    flash('Total of rejected and rework parts cannot exceed inspected quantity.', 'warning')
+                    return redirect(url_for('quality_dashboard'))
+                
+                # Create quality check record
+                new_qc_record = QualityCheck(
+                    operator_log_id=op_log_to_inspect.id,
+                    inspector_name=session.get('quality_inspector_name'),
+                    check_type='LPI',
+                    result=result,
+                    rejection_reason=rejection_reason if result in ['reject', 'rework'] else None,
+                    lpi_quantity_inspected=quantity_inspected,
+                    lpi_quantity_rejected=quantity_rejected,
+                    lpi_quantity_to_rework=quantity_to_rework
+                )
+                db.session.add(new_qc_record)
+                db.session.flush()
+
+                if result == 'pass':
+                    op_log_to_inspect.lpi_status = 'pass'
+                    op_log_to_inspect.current_status = 'lpi_completed'
+                    flash('LPI passed. Production cycle complete.', 'success')
+
+                elif result == 'reject':
+                    op_log_to_inspect.lpi_status = 'fail'
+                    op_log_to_inspect.current_status = 'lpi_completed'  # Still complete, just with rejects
+                    op_log_to_inspect.run_rejected_quantity_lpi = quantity_rejected
+
+                    if quantity_rejected > 0:
+                        # Create scrap record for rejected parts
+                        scrap_record = ScrapLog(
+                            drawing_id=op_log_to_inspect.drawing_id,
+                            quantity_scrapped=quantity_rejected,
+                            reason=f"LPI Rejected: {rejection_reason}",
+                            scrapped_at=datetime.now(timezone.utc),
+                            scrapped_by=session.get('quality_inspector_name'),
+                            operator_log_id=op_log_to_inspect.id,
+                            originating_quality_check_id=new_qc_record.id
+                        )
+                        db.session.add(scrap_record)
+
+                    flash(f'LPI completed. {quantity_rejected} parts marked as scrap.', 'warning')
+
+                elif result == 'rework':
+                    op_log_to_inspect.lpi_status = 'rework'
+                    op_log_to_inspect.current_status = 'lpi_completed'  # Still complete, parts going to rework
+                    op_log_to_inspect.run_rework_quantity_lpi = quantity_to_rework
+
+                    if quantity_rejected > 0:
+                        # Create scrap record for rejected parts
+                        scrap_record = ScrapLog(
+                            drawing_id=op_log_to_inspect.drawing_id,
+                            quantity_scrapped=quantity_rejected,
+                            reason=f"LPI Rejected: {rejection_reason}",
+                            scrapped_at=datetime.now(timezone.utc),
+                            scrapped_by=session.get('quality_inspector_name'),
+                            operator_log_id=op_log_to_inspect.id,
+                            originating_quality_check_id=new_qc_record.id
+                        )
+                        db.session.add(scrap_record)
+
+                    if quantity_to_rework > 0:
+                        # Create rework queue item
+                        rework_item = ReworkQueue(
+                            source_operator_log_id=op_log_to_inspect.id,
+                            originating_quality_check_id=new_qc_record.id,
+                            drawing_id=op_log_to_inspect.drawing_id,
+                            quantity_to_rework=quantity_to_rework,
+                            rejection_reason=rejection_reason,
+                            status='pending_manager_approval'  # Explicitly set status
+                        )
+                        db.session.add(rework_item)
+
+                    flash(f'LPI completed. {quantity_rejected} parts scrapped, {quantity_to_rework} parts sent for rework approval.', 'warning')
+            
+            db.session.commit()
             return redirect(url_for('quality_dashboard'))
         
         if action == 'submit_fpi':
@@ -1024,7 +1487,7 @@ def quality_dashboard():
                     scrapped_at=datetime.now(timezone.utc),
                     scrapped_by=session.get('quality_inspector_name'),
                     operator_log_id=op_log_to_inspect.id,
-                    quality_check_id=new_qc_record.id
+                    originating_quality_check_id=new_qc_record.id
                 )
                 db.session.add(scrap_record)
                 flash('FPI failed. Parts marked as scrap.', 'warning')
@@ -1123,7 +1586,7 @@ def quality_dashboard():
                         scrapped_at=datetime.now(timezone.utc),
                         scrapped_by=session.get('quality_inspector_name'),
                         operator_log_id=op_log_to_inspect.id,
-                        quality_check_id=new_qc_record.id
+                        originating_quality_check_id=new_qc_record.id
                     )
                     db.session.add(scrap_record)
 
@@ -1143,7 +1606,7 @@ def quality_dashboard():
                         scrapped_at=datetime.now(timezone.utc),
                         scrapped_by=session.get('quality_inspector_name'),
                         operator_log_id=op_log_to_inspect.id,
-                        quality_check_id=new_qc_record.id
+                        originating_quality_check_id=new_qc_record.id
                     )
                     db.session.add(scrap_record)
 
@@ -1165,6 +1628,36 @@ def quality_dashboard():
             return redirect(url_for('quality_dashboard'))
 
     # GET request - prepare data for template
+    inspector_name = session.get('quality_inspector_name')
+    
+    # If no inspector name in session, try to restore from previous quality checks
+    if not inspector_name:
+        # Get the most recent quality check to find the last inspector
+        last_check = QualityCheck.query.order_by(QualityCheck.timestamp.desc()).first()
+        if last_check:
+            inspector_name = last_check.inspector_name
+            session['quality_inspector_name'] = inspector_name
+            flash(f'Welcome back {inspector_name}! Your previous inspector name has been restored.', 'info')
+
+    def serialize_log(log):
+        return {
+            "id": log.id,
+            "drawing_rel": {
+                "drawing_number": log.drawing_rel.drawing_number if log.drawing_rel else "N/A"
+            } if hasattr(log, "drawing_rel") and log.drawing_rel else None,
+            "operator_session": {
+                "operator_name": log.operator_session.operator_name if log.operator_session else "N/A",
+                "machine_rel": {
+                    "name": log.operator_session.machine_rel.name if log.operator_session and log.operator_session.machine_rel else "N/A"
+                } if log.operator_session and hasattr(log.operator_session, "machine_rel") and log.operator_session.machine_rel else None
+            } if hasattr(log, "operator_session") and log.operator_session else None,
+            "current_status": log.current_status,
+            "run_completed_quantity": log.run_completed_quantity,
+            "run_planned_quantity": log.run_planned_quantity,
+            "fpi_status": log.fpi_status,
+            "lpi_status": log.lpi_status,
+        }
+
     pending_fpi_logs = OperatorLog.query.join(
         OperatorSession
     ).join(
@@ -1185,20 +1678,14 @@ def quality_dashboard():
         OperatorLog.created_at.desc()
     ).all()
 
-    print(f"DEBUG QUALITY: Found {len(pending_fpi_logs)} pending FPI logs")
-    print(f"DEBUG QUALITY: Found {len(pending_lpi_logs)} pending LPI logs")
-    
-    for log in pending_fpi_logs:
-        print(f"DEBUG QUALITY FPI: Log ID {log.id}, Status {log.current_status}, Drawing {log.drawing_rel.drawing_number if log.drawing_rel else 'No drawing'}")
-    
-    for log in pending_lpi_logs:
-        print(f"DEBUG QUALITY LPI: Log ID {log.id}, Status {log.current_status}, Drawing {log.drawing_rel.drawing_number if log.drawing_rel else 'No drawing'}")
+    logs_for_js = [serialize_log(log) for log in pending_fpi_logs + pending_lpi_logs]
 
     return render_template(
         'quality.html',
-        inspector_name=session.get('quality_inspector_name'),
+        inspector_name=inspector_name,
         pending_fpi_logs=pending_fpi_logs,
-        pending_lpi_logs=pending_lpi_logs
+        pending_lpi_logs=pending_lpi_logs,
+        logs_for_js=logs_for_js
     )
 
 # --- DIGITAL TWIN (Basic Placeholder) ---
@@ -1408,7 +1895,7 @@ def machine_report():
             OperatorLog.setup_start_time < end_dt
         ).options(
             db.joinedload(OperatorLog.drawing_rel),
-            db.joinedload(OperatorLog.operator_session_rel),
+            db.joinedload(OperatorLog.operator_session),
             db.joinedload(OperatorLog.quality_checks)
         ).all()
 
@@ -1459,9 +1946,9 @@ def machine_report():
             # Build report row matching spreadsheet format
             row = {
                 'date': log.setup_start_time.date(),
-                'shift': log.operator_session_rel.shift,
+                'shift': log.operator_session.shift,
                 'machine': machine.name,
-                'operator': log.operator_session_rel.operator_name,
+                'operator': log.operator_session.operator_name,
                 'drawing': log.drawing_rel.drawing_number if log.drawing_rel else 'N/A',
                 'tool_change': 0,  # Add if you track this
                 'inspection': 0,  # Add if you track this
@@ -1498,6 +1985,122 @@ def machine_report():
                          report_data=report_data,
                          start_date=start_date,
                          end_date=end_date)
+
+@app.route('/machine_report/download', methods=['POST'])
+def download_machine_report():
+    if 'active_role' not in session or session['active_role'] not in ['manager', 'planner', 'plant_head']:
+        flash('Access denied. Only managers, planners, and plant heads can access reports.', 'danger')
+        return redirect(url_for('login_general'))
+
+    # Get date range from form data
+    start_date = request.form.get('start_date', datetime.now(timezone.utc).date().isoformat())
+    end_date = request.form.get('end_date', start_date)
+    start_dt = datetime.fromisoformat(start_date)
+    end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+
+    machines = Machine.query.order_by(Machine.name).all()
+    report_data = []
+
+    for machine in machines:
+        logs = OperatorLog.query.join(OperatorSession).filter(
+            OperatorSession.machine_id == machine.id,
+            OperatorLog.setup_start_time >= start_dt,
+            OperatorLog.setup_start_time < end_dt
+        ).options(
+            db.joinedload(OperatorLog.drawing_rel),
+            db.joinedload(OperatorLog.operator_session),
+            db.joinedload(OperatorLog.quality_checks)
+        ).all()
+
+        for log in logs:
+            setup_time = None
+            if log.setup_start_time and log.setup_end_time:
+                setup_time = (log.setup_end_time - log.setup_start_time).total_seconds() / 60
+            cycle_time = None
+            total_cycle_time = 0
+            if log.first_cycle_start_time and log.last_cycle_end_time and log.run_completed_quantity:
+                total_cycle_time = (log.last_cycle_end_time - log.first_cycle_start_time).total_seconds() / 60
+                cycle_time = total_cycle_time / log.run_completed_quantity if log.run_completed_quantity > 0 else None
+            availability = 0
+            performance = 0
+            quality = 0
+            oee = 0
+            if log.drawing_rel and log.drawing_rel.end_product_rel:
+                std_setup_time = log.drawing_rel.end_product_rel.setup_time_std or 0
+                std_cycle_time = log.drawing_rel.end_product_rel.cycle_time_std or 0
+                if std_cycle_time > 0 and cycle_time:
+                    performance = (std_cycle_time / cycle_time) * 100
+                total_parts = (log.run_completed_quantity or 0) + (log.run_rejected_quantity_fpi or 0) + \
+                            (log.run_rejected_quantity_lpi or 0) + (log.run_rework_quantity_fpi or 0) + \
+                            (log.run_rework_quantity_lpi or 0)
+                if total_parts > 0:
+                    quality = ((log.run_completed_quantity or 0) / total_parts) * 100
+                if log.current_status == 'cycle_started':
+                    availability = 95.0
+                elif log.current_status == 'cycle_paused':
+                    availability = 80.0
+                elif log.current_status in ['setup_started', 'setup_done']:
+                    availability = 75.0
+                oee = (availability * performance * quality) / 10000
+            row = {
+                'date': log.setup_start_time.date(),
+                'shift': log.operator_session.shift,
+                'machine': machine.name,
+                'operator': log.operator_session.operator_name,
+                'drawing': log.drawing_rel.drawing_number if log.drawing_rel else 'N/A',
+                'tool_change': 0,
+                'inspection': 0,
+                'engagement': 0,
+                'rework': (log.run_rework_quantity_fpi or 0) + (log.run_rework_quantity_lpi or 0),
+                'minor_stoppage': 0,
+                'setup_time': round(setup_time, 2) if setup_time else 0,
+                'tea_break': 0,
+                'tbt': 0,
+                'lunch': 0,
+                '5s': 0,
+                'pm': 0,
+                'planned_qty': log.run_planned_quantity,
+                'completed_qty': log.run_completed_quantity,
+                'std_setup_time': std_setup_time,
+                'std_cycle_time': std_cycle_time,
+                'actual_setup_time': round(setup_time, 2) if setup_time else 0,
+                'actual_cycle_time': round(cycle_time, 2) if cycle_time else 0,
+                'availability': round(availability, 2),
+                'performance': round(performance, 2),
+                'quality': round(quality, 2),
+                'oee': round(oee, 2),
+                'status': log.current_status,
+                'quality_status': "Pending FPI" if log.current_status == 'cycle_completed_pending_fpi' \
+                                else "Pending LPI" if log.current_status == 'cycle_completed_pending_lpi' \
+                                else "N/A",
+                'reason': '',
+                'machine_power': 'ON' if log.current_status not in ['admin_closed'] else 'OFF',
+                'program_issues': ''
+            }
+            report_data.append(row)
+
+    # Explicitly set column order and names
+    columns = [
+        'date', 'shift', 'machine', 'operator', 'drawing', 'tool_change', 'inspection', 'engagement', 'rework',
+        'minor_stoppage', 'setup_time', 'tea_break', 'tbt', 'lunch', '5s', 'pm', 'planned_qty', 'completed_qty',
+        'std_setup_time', 'std_cycle_time', 'actual_setup_time', 'actual_cycle_time', 'availability', 'performance',
+        'quality', 'oee', 'status', 'quality_status', 'reason', 'machine_power', 'program_issues'
+    ]
+    import pandas as pd
+    df = pd.DataFrame(report_data, columns=columns)
+    if df.empty:
+        df = pd.DataFrame(columns=columns)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Machine Report', index=False, header=True)
+    output.seek(0)
+    file_name = f"machine_report_{start_date}_to_{end_date}.xlsx"
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=file_name
+    )
 
 # --- DB Initialization ---
 def setup_database():
@@ -1565,14 +2168,67 @@ def plant_head_dashboard():
         return redirect(url_for('login_general'))
 
     try:
-        # Get all machines with their OEE values
+        # Get all machines with their active logs
         machines = Machine.query.options(
             db.joinedload(Machine.operator_sessions)
                .joinedload(OperatorSession.operator_logs)
         ).all()
 
-        # Calculate metrics
-        total_oee = sum(machine.oee or 0 for machine in machines)
+        # Calculate OEE and other metrics for each machine
+        machine_metrics = []
+        total_oee = 0
+        
+        for machine in machines:
+            # Find active operator session and current log
+            active_session = next((s for s in machine.operator_sessions if s.is_active), None)
+            current_log = None
+            
+            if active_session:
+                current_log = next((log for log in active_session.operator_logs 
+                                   if log.current_status not in ['lpi_completed', 'admin_closed']), None)
+            
+            # Calculate OEE for this machine
+            oee_value = 0
+            first_pass_yield = 0
+            rework_rate = 0
+            
+            if current_log:
+                # Simple OEE calculation based on current log status
+                availability = 95.0 if current_log.current_status == 'cycle_started' else 75.0
+                
+                # Calculate quality metrics
+                total_parts = ((current_log.run_completed_quantity or 0) + 
+                              (current_log.run_rejected_quantity_fpi or 0) + 
+                              (current_log.run_rejected_quantity_lpi or 0) +
+                              (current_log.run_rework_quantity_fpi or 0) + 
+                              (current_log.run_rework_quantity_lpi or 0))
+                
+                if total_parts > 0:
+                    quality = ((current_log.run_completed_quantity or 0) / total_parts) * 100
+                    first_pass_yield = quality  # Simplified FPY calculation
+                    rework_rate = ((current_log.run_rework_quantity_fpi or 0) + 
+                                  (current_log.run_rework_quantity_lpi or 0)) / total_parts * 100
+                else:
+                    quality = 100.0
+                    first_pass_yield = 100.0
+                    rework_rate = 0.0
+                
+                # Performance calculation (simplified)
+                performance = 80.0
+                
+                # Overall OEE
+                oee_value = (availability * performance * quality) / 10000
+            
+            machine_metrics.append({
+                'machine': machine,
+                'oee': oee_value,
+                'first_pass_yield': first_pass_yield,
+                'rework_rate': rework_rate
+            })
+            
+            total_oee += oee_value
+        
+        # Calculate average OEE
         average_oee = total_oee / len(machines) if machines else 0
         active_machines_count = sum(1 for m in machines if m.status == 'in_use')
         machine_utilization = round((active_machines_count / len(machines)) * 100) if machines else 0
@@ -1586,15 +2242,41 @@ def plant_head_dashboard():
         ).count()
         
         # Quality stats
-        pending_quality_checks = QualityCheck.query.filter_by(result='pending').count()
+        pending_quality_checks = OperatorLog.query.filter(
+            OperatorLog.current_status.in_(['cycle_completed_pending_fpi', 'cycle_completed_pending_lpi'])
+        ).count()
         rework_count = ReworkQueue.query.filter_by(status='pending_manager_approval').count()
 
         # Prepare quality metrics for chart
         quality_metrics = {
-            'labels': [m.name for m in machines],
-            'fpy_data': [m.first_pass_yield or 0 for m in machines],  # Assuming Machine model has this field
-            'rework_data': [m.rework_rate or 0 for m in machines]     # Assuming Machine model has this field
+            'labels': [m['machine'].name for m in machine_metrics],
+            'fpy_data': [m['first_pass_yield'] for m in machine_metrics],
+            'rework_data': [m['rework_rate'] for m in machine_metrics]
         }
+
+        # --- Digital Twin Summary Data ---
+        production_summary = db.session.query(
+            EndProduct.name,
+            EndProduct.sap_id,
+            EndProduct.quantity,
+            db.func.sum(OperatorLog.run_completed_quantity).label('completed'),
+            db.func.sum(OperatorLog.run_rejected_quantity_fpi + OperatorLog.run_rejected_quantity_lpi).label('rejected'),
+            db.func.sum(OperatorLog.run_rework_quantity_fpi + OperatorLog.run_rework_quantity_lpi).label('rework')
+        ).join(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id, isouter=True)
+        production_summary = production_summary.group_by(EndProduct.id).all()
+
+        completed_end_products = (
+            db.session.query(EndProduct)
+            .outerjoin(OperatorLog, OperatorLog.end_product_sap_id == EndProduct.sap_id)
+            .group_by(EndProduct.id)
+            .having(db.func.coalesce(db.func.sum(OperatorLog.run_completed_quantity), 0) >= EndProduct.quantity)
+            .all()
+        )
+
+        recent_quality_checks = QualityCheck.query.order_by(QualityCheck.timestamp.desc()).limit(10).all()
+        recent_rework = ReworkQueue.query.order_by(ReworkQueue.created_at.desc()).limit(10).all()
+        recent_scrap = ScrapLog.query.order_by(ScrapLog.scrapped_at.desc()).limit(10).all()
+        digital_twin_url = url_for('digital_twin_dashboard')
 
         return render_template('plant_head.html',
             average_oee=average_oee,
@@ -1608,7 +2290,13 @@ def plant_head_dashboard():
             todays_projects=[],  # Replace with actual projects query
             quality_alerts=[],   # Replace with actual alerts query
             quality_metrics=quality_metrics,
-            machines=machines
+            machine_metrics=machine_metrics,
+            production_summary=production_summary,
+            completed_end_products=completed_end_products,
+            recent_quality_checks=recent_quality_checks,
+            recent_rework=recent_rework,
+            recent_scrap=recent_scrap,
+            digital_twin_url=digital_twin_url
         )
 
     except Exception as e:
@@ -1616,5 +2304,21 @@ def plant_head_dashboard():
         flash('Error loading dashboard data', 'danger')
         return redirect(url_for('login_general'))
 
+# Minimal test route for session debugging
+@app.route('/test_login', methods=['GET', 'POST'])
+def test_login():
+    if request.method == 'POST':
+        session['test_user'] = request.form['username']
+        print("Test login: session contents:", dict(session))
+        return 'Logged in as ' + session['test_user']
+    return '''
+        <form method="post">
+            <input name="username">
+            <input type="submit">
+        </form>
+    '''
+
 if __name__ == '__main__':
+    with app.app_context():
+        setup_database()  # Initialize database and create machines
     app.run(debug=True)
