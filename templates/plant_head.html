@@ -2,14 +2,19 @@
 
 {% block title %}Plant Head Dashboard - ChipSight{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/plant_head.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
         <h1 class="h2">Plant Head Dashboard</h1>
         <div class="btn-toolbar mb-2 mb-md-0">
             <a href="{{ digital_twin_url }}" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-industry me-1"></i>Digital Twin
-                </a>
+                <i class="fas fa-industry me-1"></i>Digital Twin
+            </a>
             <form method="POST" action="{{ url_for('logout_general') }}" class="d-inline ms-2">
                 <button type="submit" class="btn btn-sm btn-outline-danger">
                     <i class="fas fa-sign-out-alt me-1"></i>Logout
@@ -18,32 +23,110 @@
         </div>
     </div>
 
-    <!-- Simple Quick Stats Row -->
+    <!-- Enhanced KPI Cards -->
     <div class="row mb-4">
         <div class="col-6 col-md-3 mb-2">
-            <div class="border rounded p-3 text-center bg-light">
-                <div class="fw-bold">Active Machines</div>
-                <div class="display-6">{{ active_machines_count }}/{{ total_machines_count }}</div>
-                <div class="small text-muted">Utilization: {{ machine_utilization }}%</div>
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">Active Machines</div>
+                            <div class="display-6">{{ active_machines_count }}/{{ total_machines_count }}</div>
+                            <div class="small">Utilization: {{ machine_utilization }}%</div>
+                        </div>
+                        <i class="fas fa-cogs fa-2x opacity-50"></i>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-6 col-md-3 mb-2">
-            <div class="border rounded p-3 text-center bg-light">
-                <div class="fw-bold">Today's Production</div>
-                <div class="display-6">{{ todays_production_count }}</div>
+            <div class="card bg-success text-white h-100">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">Today's Production</div>
+                            <div class="display-6">{{ todays_production_count }}</div>
+                            <div class="small">Parts Completed</div>
+                        </div>
+                        <i class="fas fa-industry fa-2x opacity-50"></i>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-6 col-md-3 mb-2">
-            <div class="border rounded p-3 text-center bg-light">
-                <div class="fw-bold">Quality Issues</div>
-                <div class="display-6">{{ pending_quality_checks }}</div>
-                <div class="small text-muted">Rework: {{ rework_count }}</div>
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">Quality Issues</div>
+                            <div class="display-6">{{ pending_quality_checks }}</div>
+                            <div class="small">Rework: {{ rework_count }}</div>
+                        </div>
+                        <i class="fas fa-exclamation-triangle fa-2x opacity-50"></i>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="col-6 col-md-3 mb-2">
-            <div class="border rounded p-3 text-center bg-light">
-                <div class="fw-bold">Average OEE</div>
-                <div class="display-6">{{ "%.1f"|format(average_oee|default(0)) }}%</div>
+            <div class="card bg-info text-white h-100">
+                <div class="card-body text-center">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">Average OEE</div>
+                            <div class="display-6">{{ "%.1f"|format(average_oee|default(0)) }}%</div>
+                            <div class="small">Overall Equipment Effectiveness</div>
+                        </div>
+                        <i class="fas fa-chart-line fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Production Overview</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="productionOverviewChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Machine Utilization</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="machineUtilizationChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OEE and Efficiency Charts -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Machine OEE Performance</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="oeeChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Shift Performance</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="shiftChart" height="250"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -60,17 +143,17 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <h6>Production Summary</h6>
-                    <div class="table-responsive">
+                            <div class="table-responsive">
                                 <table class="table table-sm table-bordered">
                                     <thead><tr><th>End Product</th><th>SAP ID</th><th>Planned</th><th>Completed</th><th>Rejected</th><th>Rework</th></tr></thead>
-                            <tbody>
+                                    <tbody>
                                         {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
                                         <tr><td>{{ name }}</td><td>{{ sap_id }}</td><td>{{ planned }}</td><td>{{ completed or 0 }}</td><td>{{ rejected or 0 }}</td><td>{{ rework or 0 }}</td></tr>
                                         {% endfor %}
                                     </tbody>
                                 </table>
-                                            </div>
-                                        </div>
+                            </div>
+                        </div>
                         <div class="col-md-6 mb-3">
                             <h6>Recent Quality Checks</h6>
                             <div class="table-responsive">
@@ -79,12 +162,12 @@
                                     <tbody>
                                         {% for qc in recent_quality_checks %}
                                         <tr><td>{{ qc.check_type }}</td><td>{{ qc.result|title }}</td><td>{{ qc.inspector_name }}</td><td>{{ qc.timestamp.strftime('%Y-%m-%d %H:%M') }}</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <h6>Recent Rework</h6>
@@ -97,25 +180,201 @@
                                         {% endfor %}
                                     </tbody>
                                 </table>
-        </div>
-                </div>
+                            </div>
+                        </div>
                         <div class="col-md-6 mb-3">
                             <h6>Recent Scrap/Rejected</h6>
-                    <div class="table-responsive">
+                            <div class="table-responsive">
                                 <table class="table table-sm table-bordered">
                                     <thead><tr><th>Drawing</th><th>Qty</th><th>Reason</th><th>Time</th></tr></thead>
-                            <tbody>
+                                    <tbody>
                                         {% for sc in recent_scrap %}
                                         <tr><td>{{ sc.drawing_rel.drawing_number if sc.drawing_rel else 'N/A' }}</td><td>{{ sc.quantity_scrapped }}</td><td>{{ sc.reason }}</td><td>{{ sc.scrapped_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-{% endblock %} 
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Production Overview Chart
+    const productionData = [
+        {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
+        {
+            name: '{{ name }}',
+            planned: {{ planned }},
+            completed: {{ completed or 0 }},
+            rejected: {{ rejected or 0 }},
+            rework: {{ rework or 0 }}
+        },
+        {% endfor %}
+    ];
+
+    const productionCtx = document.getElementById('productionOverviewChart').getContext('2d');
+    new Chart(productionCtx, {
+        type: 'bar',
+        data: {
+            labels: productionData.map(item => item.name),
+            datasets: [
+                {
+                    label: 'Planned',
+                    data: productionData.map(item => item.planned),
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Completed',
+                    data: productionData.map(item => item.completed),
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Issues',
+                    data: productionData.map(item => item.rejected + item.rework),
+                    backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Machine Utilization Chart
+    const machineUtilCtx = document.getElementById('machineUtilizationChart').getContext('2d');
+    const activeMachines = {{ active_machines_count }};
+    const totalMachines = {{ total_machines_count }};
+    const idleMachines = totalMachines - activeMachines;
+
+    new Chart(machineUtilCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Running', 'Idle', 'Breakdown'],
+            datasets: [{
+                data: [activeMachines, idleMachines, 0],
+                backgroundColor: [
+                    'rgba(40, 167, 69, 0.8)',
+                    'rgba(255, 193, 7, 0.8)',
+                    'rgba(220, 53, 69, 0.8)'
+                ],
+                borderColor: [
+                    'rgba(40, 167, 69, 1)',
+                    'rgba(255, 193, 7, 1)',
+                    'rgba(220, 53, 69, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // OEE Chart (Mock data - replace with actual OEE calculations)
+    const oeeCtx = document.getElementById('oeeChart').getContext('2d');
+    const machines = ['Leadwell-1', 'Leadwell-2', 'VMC1', 'VMC2', 'VMC3', 'VMC4', 'HAAS-1', 'HAAS-2'];
+    const availability = [85, 78, 92, 67, 88, 73, 90, 82];
+    const performance = [92, 88, 85, 79, 91, 84, 87, 89];
+    const quality = [96, 94, 98, 91, 95, 89, 97, 93];
+
+    new Chart(oeeCtx, {
+        type: 'bar',
+        data: {
+            labels: machines,
+            datasets: [
+                {
+                    label: 'Availability %',
+                    data: availability,
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Performance %',
+                    data: performance,
+                    backgroundColor: 'rgba(255, 206, 86, 0.8)',
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Quality %',
+                    data: quality,
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Percentage (%)'
+                    }
+                }
+            }
+        }
+    });
+
+    // Shift Performance Chart
+    const shiftCtx = document.getElementById('shiftChart').getContext('2d');
+    new Chart(shiftCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Shift A', 'Shift B', 'Shift C'],
+            datasets: [{
+                data: [45, 35, 20], // Mock shift performance data
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.8)',
+                    'rgba(54, 162, 235, 0.8)',
+                    'rgba(255, 206, 86, 0.8)'
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                    'rgba(54, 162, 235, 1)',
+                    'rgba(255, 206, 86, 1)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

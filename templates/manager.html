@@ -4,6 +4,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/manager.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -16,6 +17,104 @@
                     <i class="fas fa-sign-out-alt me-1"></i>Logout
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- Production Metrics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Total Production</h6>
+                            <h3 class="mb-0">{{ production_summary|sum(attribute=3)|default(0) }}</h3>
+                        </div>
+                        <i class="fas fa-industry fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Parts Completed Today</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Quality Pass Rate</h6>
+                            <h3 class="mb-0">{{ "%.1f"|format(((production_summary|sum(attribute=3)|default(0) - production_summary|sum(attribute=4)|default(0)) / (production_summary|sum(attribute=3)|default(1)) * 100)) }}%</h3>
+                        </div>
+                        <i class="fas fa-check-circle fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Passed Quality Checks</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Rework Items</h6>
+                            <h3 class="mb-0">{{ production_summary|sum(attribute=5)|default(0) }}</h3>
+                        </div>
+                        <i class="fas fa-sync-alt fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-dark-50">Items Requiring Rework</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-uppercase mb-2">Machine Utilization</h6>
+                            <h3 class="mb-0" id="machine-utilization">0%</h3>
+                        </div>
+                        <i class="fas fa-cogs fa-2x opacity-50"></i>
+                    </div>
+                    <small class="text-white-50">Active Machines</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Production by Product</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="productionChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Machine Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="machineStatusChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Uptime Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Machine Uptime Today</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="uptimeChart" height="200"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -296,4 +395,139 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Production Chart
+    const productionData = [
+        {% for name, sap_id, planned, completed, rejected, rework in production_summary %}
+        {
+            name: '{{ name }}',
+            planned: {{ planned }},
+            completed: {{ completed or 0 }},
+            rejected: {{ rejected or 0 }},
+            rework: {{ rework or 0 }}
+        },
+        {% endfor %}
+    ];
+
+    const productionCtx = document.getElementById('productionChart').getContext('2d');
+    new Chart(productionCtx, {
+        type: 'bar',
+        data: {
+            labels: productionData.map(item => item.name),
+            datasets: [
+                {
+                    label: 'Planned',
+                    data: productionData.map(item => item.planned),
+                    backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Completed',
+                    data: productionData.map(item => item.completed),
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Rejected',
+                    data: productionData.map(item => item.rejected),
+                    backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Machine Status Chart (Mock data - replace with actual machine status)
+    const machineStatusCtx = document.getElementById('machineStatusChart').getContext('2d');
+    const activeMachines = 3; // Replace with actual count
+    const totalMachines = 8; // Replace with actual count
+    const idleMachines = totalMachines - activeMachines;
+    
+    // Update utilization display
+    const utilization = Math.round((activeMachines / totalMachines) * 100);
+    document.getElementById('machine-utilization').textContent = utilization + '%';
+
+    new Chart(machineStatusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Running', 'Idle', 'Breakdown'],
+            datasets: [{
+                data: [activeMachines, idleMachines, 0],
+                backgroundColor: [
+                    'rgba(40, 167, 69, 0.8)',
+                    'rgba(255, 193, 7, 0.8)',
+                    'rgba(220, 53, 69, 0.8)'
+                ],
+                borderColor: [
+                    'rgba(40, 167, 69, 1)',
+                    'rgba(255, 193, 7, 1)',
+                    'rgba(220, 53, 69, 1)'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Machine Uptime Chart (Mock data - replace with actual uptime data)
+    const uptimeCtx = document.getElementById('uptimeChart').getContext('2d');
+    const machines = ['Leadwell-1', 'Leadwell-2', 'VMC1', 'VMC2', 'VMC3', 'VMC4', 'HAAS-1', 'HAAS-2'];
+    const uptimeHours = [7.5, 6.8, 8.2, 5.5, 7.9, 6.2, 8.0, 7.3]; // Mock uptime data in hours
+
+    new Chart(uptimeCtx, {
+        type: 'bar',
+        data: {
+            labels: machines,
+            datasets: [{
+                label: 'Uptime (Hours)',
+                data: uptimeHours,
+                backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 8,
+                    title: {
+                        display: true,
+                        text: 'Hours'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+});
+</script>
 {% endblock %}

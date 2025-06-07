@@ -2,6 +2,10 @@
 
 {% block title %}Leadwell-1 Operator Panel - ChipSight{% endblock %}
 
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -23,6 +27,51 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
+
+    <!-- Performance Dashboard Row -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Today's Performance - Leadwell-1</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="performanceChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-tachometer-alt me-2"></i>Machine Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center">
+                        <div class="mb-3">
+                            <span class="badge bg-{% if machine_status == 'in_use' %}success{% elif machine_status == 'breakdown' %}danger{% else %}secondary{% endif %} fs-6 p-3">
+                                {{ machine_status | title if machine_status else 'Unknown' }}
+                            </span>
+                        </div>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="fw-bold text-primary">Uptime</div>
+                                    <div class="h5" id="uptime-display">7.5h</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="fw-bold text-success">Parts Today</div>
+                                    <div class="h5" id="parts-today">{{ current_log.run_completed_quantity if current_log else 0 }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <canvas id="efficiencyGauge" height="150"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Active Logs Management Section -->
     <div class="card mb-4">
@@ -345,4 +394,131 @@
         </div>
     </div>
 </div>
-{% endblock %} 
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Performance Chart - showing hourly production
+    const performanceCtx = document.getElementById('performanceChart').getContext('2d');
+    const hours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+    const partsProduced = [5, 8, 12, 15, 18, 22, 25, 28, 30]; // Mock data
+    const targetParts = [6, 12, 18, 24, 30, 36, 42, 48, 54]; // Mock target
+
+    new Chart(performanceCtx, {
+        type: 'line',
+        data: {
+            labels: hours,
+            datasets: [
+                {
+                    label: 'Parts Produced',
+                    data: partsProduced,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderWidth: 3,
+                    fill: true
+                },
+                {
+                    label: 'Target',
+                    data: targetParts,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Parts Count'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+
+    // Efficiency Gauge Chart
+    const efficiencyCtx = document.getElementById('efficiencyGauge').getContext('2d');
+    const efficiency = 85; // Mock efficiency percentage
+
+    new Chart(efficiencyCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Efficiency', 'Remaining'],
+            datasets: [{
+                data: [efficiency, 100 - efficiency],
+                backgroundColor: [
+                    efficiency >= 80 ? 'rgba(40, 167, 69, 0.8)' : 
+                    efficiency >= 60 ? 'rgba(255, 193, 7, 0.8)' : 
+                    'rgba(220, 53, 69, 0.8)',
+                    'rgba(233, 236, 239, 0.8)'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        },
+        plugins: [{
+            beforeDraw: function(chart) {
+                const width = chart.width;
+                const height = chart.height;
+                const ctx = chart.ctx;
+                
+                ctx.restore();
+                const fontSize = (height / 114).toFixed(2);
+                ctx.font = fontSize + "em sans-serif";
+                ctx.textBaseline = "middle";
+                ctx.fillStyle = "#333";
+                
+                const text = efficiency + "%";
+                const textX = Math.round((width - ctx.measureText(text).width) / 2);
+                const textY = height / 2;
+                
+                ctx.fillText(text, textX, textY);
+                ctx.save();
+            }
+        }]
+    });
+
+    // Update uptime display (mock calculation)
+    function updateUptime() {
+        const now = new Date();
+        const startOfShift = new Date();
+        startOfShift.setHours(8, 0, 0, 0); // Assuming 8 AM start
+        
+        if (now > startOfShift) {
+            const uptimeMs = now - startOfShift;
+            const uptimeHours = (uptimeMs / (1000 * 60 * 60)).toFixed(1);
+            document.getElementById('uptime-display').textContent = uptimeHours + 'h';
+        }
+    }
+
+    updateUptime();
+    setInterval(updateUptime, 60000); // Update every minute
+});
+</script>
+{% endblock %}
